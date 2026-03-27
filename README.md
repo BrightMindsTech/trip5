@@ -9,13 +9,13 @@ iOS app for booking rides between Irbid and Amman, Jordan.
    ```bash
    git add -A
    git commit -m "Sync Trip5 monorepo"
-   git remote set-url origin https://github.com/YOUR_USER/YOUR_REPO.git
+   git remote set-url origin https://github.com/BrightMindsTech/trip5.git
    git push -u origin main
    ```
    If you still use `BrightMindsTech/trip5-backend` and want the **full** app there, you can keep that remote URL—just know the repo name may say “backend” while it holds everything.
 3. **On your Mac**: install [Cursor](https://cursor.com), then **File → Open Folder** and clone:
    ```bash
-   git clone https://github.com/YOUR_USER/YOUR_REPO.git
+   git clone https://github.com/BrightMindsTech/trip5.git
    cd YOUR_REPO
    ```
 4. **Env files** (copy examples, then fill in real keys—never commit `.env`):
