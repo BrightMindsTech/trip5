@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, Component } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Platform, ActivityIndicator } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
-import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import i18n, { initI18n } from './src/i18n';
 import { colors, ios } from './src/theme';
@@ -23,12 +23,16 @@ class ErrorBoundary extends Component {
     return this.props.children;
   }
 }
+import { AuthProvider, useAuth } from './src/context/AuthContext';
 import { OrderProvider, useOrder } from './src/context/OrderContext';
 import StepProgress from './src/components/StepProgress';
 import LanguageToggle from './src/components/LanguageToggle';
 import UnifiedFlowScreen from './src/screens/UnifiedFlowScreen';
+import AuthScreen from './src/screens/AuthScreen';
+import ProfileSetupScreen from './src/screens/ProfileSetupScreen';
 
 function MainFlow() {
+  const { signOut } = useAuth();
   const {
     order,
     updateOrder,
@@ -36,15 +40,16 @@ function MainFlow() {
     goNext,
     goBack,
     canProceedFromRoute,
-    canProceedFromService,
-    canProceedFromDetails,
+    canProceedFromLocations,
+    canProceedFromServiceSchedule,
+    scheduleStep,
+    setScheduleStep,
     orderDate,
     isSubmitting,
     submitError,
     orderSent,
     submit,
     resetOrder,
-    isValidPhone,
   } = useOrder();
 
   const [locale, setLocale] = useState(i18n.locale);
@@ -59,14 +64,16 @@ function MainFlow() {
     setLocale(i18n.locale);
   }, []);
 
+  const insets = useSafeAreaInsets();
+  const mapStep = currentStep === 2 && !orderSent;
+
   const getStepHeading = (step) => {
-    const keys = ['step_heading_1', 'step_heading_2', 'step_heading_3', 'step_heading_4', 'step_heading_5'];
+    const keys = ['step_heading_1', 'step_heading_2', 'step_heading_3', 'step_heading_4'];
     return i18n.t(keys[step - 1] || 'step_heading_1');
   };
-  return (
-    <View style={styles.safe}>
-      <SafeAreaView style={styles.safeInner} edges={['top']}>
-      <StatusBar style="dark" />
+
+  const chrome = (
+    <>
       <View style={[styles.headerWrapper, Platform.OS !== 'ios' && styles.headerWrapperAndroid]}>
         {Platform.OS === 'ios' ? (
           <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
@@ -86,6 +93,9 @@ function MainFlow() {
           </View>
           <View style={styles.headerSpacer} />
           <View style={styles.headerRight}>
+            <TouchableOpacity onPress={() => signOut()} style={styles.signOutBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
+              <Text style={styles.signOutText}>{i18n.t('sign_out')}</Text>
+            </TouchableOpacity>
             <LanguageToggle onToggle={refreshLocale} />
           </View>
         </View>
@@ -93,7 +103,7 @@ function MainFlow() {
       {!orderSent && (
         <StepProgress
           current={currentStep}
-          total={5}
+          total={4}
           heading={currentStep === 1 ? null : getStepHeading(currentStep)}
           routeText={
             order.route
@@ -120,27 +130,89 @@ function MainFlow() {
           }
         />
       )}
-      <View style={styles.content}>
-        <UnifiedFlowScreen
-          order={order}
-          updateOrder={updateOrder}
-          goNext={goNext}
-          goBack={goBack}
-          currentStep={currentStep}
-          canProceedFromRoute={canProceedFromRoute}
-          canProceedFromService={canProceedFromService}
-          canProceedFromDetails={canProceedFromDetails}
-          orderDate={orderDate}
-          isSubmitting={isSubmitting}
-          submitError={submitError}
-          orderSent={orderSent}
-          submit={submit}
-          resetOrder={resetOrder}
-          isValidPhone={isValidPhone}
-        />
-      </View>
-    </SafeAreaView>
+    </>
+  );
+
+  const flow = (
+    <UnifiedFlowScreen
+      order={order}
+      updateOrder={updateOrder}
+      goNext={goNext}
+      goBack={goBack}
+      currentStep={currentStep}
+      canProceedFromRoute={canProceedFromRoute}
+      canProceedFromLocations={canProceedFromLocations}
+      canProceedFromServiceSchedule={canProceedFromServiceSchedule}
+      scheduleStep={scheduleStep}
+      setScheduleStep={setScheduleStep}
+      orderDate={orderDate}
+      isSubmitting={isSubmitting}
+      submitError={submitError}
+      orderSent={orderSent}
+      submit={submit}
+      resetOrder={resetOrder}
+    />
+  );
+
+  return (
+    <View style={styles.safe}>
+      <SafeAreaView
+        style={styles.safeInner}
+        edges={mapStep ? ['bottom', 'left', 'right'] : ['top', 'left', 'right', 'bottom']}
+      >
+        <StatusBar style="dark" />
+        {mapStep ? (
+          <>
+            <View style={styles.contentMapFill}>{flow}</View>
+            {Platform.OS === 'ios' ? (
+              <BlurView
+                pointerEvents="none"
+                intensity={90}
+                tint="light"
+                style={[styles.statusBarBlurBand, { height: Math.max(insets.top, 20) }]}
+              />
+            ) : (
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.statusBarBlurBand,
+                  styles.statusBarBlurBandAndroid,
+                  { height: Math.max(insets.top, 24) },
+                ]}
+              />
+            )}
+            <View style={[styles.mapStepChrome, { paddingTop: insets.top }]}>{chrome}</View>
+          </>
+        ) : (
+          <>
+            {chrome}
+            <View style={styles.content}>{flow}</View>
+          </>
+        )}
+      </SafeAreaView>
     </View>
+  );
+}
+
+function Root() {
+  const { session, loading, profileLoading, needsProfile } = useAuth();
+  if (loading || (session?.user && profileLoading)) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background }}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+  if (!session?.user) {
+    return <AuthScreen />;
+  }
+  if (needsProfile) {
+    return <ProfileSetupScreen />;
+  }
+  return (
+    <OrderProvider>
+      <MainFlow />
+    </OrderProvider>
   );
 }
 
@@ -148,17 +220,39 @@ export default function App() {
   return (
     <ErrorBoundary>
       <SafeAreaProvider>
-        <OrderProvider>
-          <MainFlow />
-        </OrderProvider>
+        <AuthProvider>
+          <Root />
+        </AuthProvider>
       </SafeAreaProvider>
     </ErrorBoundary>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background, minHeight: 200 },
-  safeInner: { flex: 1 },
+  safe: { flex: 1, backgroundColor: colors.background, minHeight: 200, position: 'relative' },
+  safeInner: { flex: 1, position: 'relative' },
+  contentMapFill: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 0,
+  },
+  statusBarBlurBand: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 9,
+    overflow: 'hidden',
+  },
+  statusBarBlurBandAndroid: {
+    backgroundColor: 'rgba(250, 245, 255, 0.88)',
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: 'rgba(233, 213, 255, 0.85)',
+    elevation: 2,
+  },
+  mapStepChrome: {
+    zIndex: 10,
+    elevation: 14,
+  },
   headerWrapper: {
     position: 'relative',
     overflow: 'hidden',
@@ -178,7 +272,9 @@ const styles = StyleSheet.create({
   },
   headerLeft: { flexDirection: 'row', alignItems: 'center', minWidth: 80 },
   headerSpacer: { flex: 1 },
-  headerRight: { minWidth: 80, alignItems: 'flex-end' },
+  headerRight: { minWidth: 120, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
+  signOutBtn: { paddingVertical: 6, paddingHorizontal: 4, marginRight: 8 },
+  signOutText: { fontSize: 14, color: colors.textSecondary, fontWeight: '500' },
   t5Logo: {
     fontSize: 18,
     fontWeight: '700',

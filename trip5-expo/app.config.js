@@ -5,6 +5,8 @@ const googleMapsKey =
   process.env.GOOGLE_MAPS_API_KEY ||
   "";
 const apiBaseURL = process.env.EXPO_PUBLIC_API_BASE_URL || "https://trip5-api.vercel.app";
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || "";
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "";
 
 export default {
   expo: {
@@ -12,6 +14,8 @@ export default {
     extra: {
       googleMapsApiKey: googleMapsKey,
       apiBaseURL,
+      supabaseUrl,
+      supabaseAnonKey,
     },
     slug: "trip5-expo",
     version: "1.0.0",

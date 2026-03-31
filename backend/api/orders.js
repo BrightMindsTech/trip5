@@ -1,100 +1,28 @@
 /**
- * Order handler: validates body, builds message, sends via Meta WhatsApp Cloud API.
- * Env: WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, WHATSAPP_RECIPIENT_PHONE[, WHATSAPP_RECIPIENT_PHONE_2]
+ * POST /api/orders — requires Authorization: Bearer <Supabase access token>
+ * Persists order in Supabase Postgres (no WhatsApp). Name/phone from profiles.
  */
 
-const META_GRAPH_VERSION = 'v21.0';
+import { getSupabaseAdmin } from '../lib/supabase.js';
 
-function buildOrderMessage(body) {
-  const { route, date, service, fullName, phoneNumber, pickup, destination } = body;
-  const routeTextMap = {
-    irbid_to_amman: 'Irbid → Amman',
-    amman_to_irbid: 'Amman → Irbid',
-    airport_to_amman: 'Airport → Amman',
-    airport_to_irbid: 'Airport → Irbid',
-    amman_to_airport: 'Amman → Airport',
-    irbid_to_airport: 'Irbid → Airport',
-  };
-  const routeText = routeTextMap[route] || route;
-  const d = new Date(date);
-  const dateStr = d.toLocaleDateString('en-GB', {
-    day: 'numeric',
-    month: 'short',
-    year: 'numeric',
-  });
-  const timeStr = d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
-
-  let serviceDesc = '';
-  switch (service.type) {
-    case 'basic':
-      serviceDesc = 'Basic Ride - 5 JOD';
-      break;
-    case 'private':
-      serviceDesc = `Private Ride - 15 JOD (${service.alone ? 'Alone' : 'Family'})`;
-      break;
-    case 'airport': {
-      const airportPrice = ['airport_to_irbid', 'irbid_to_airport'].includes(route) ? 25 : 15;
-      serviceDesc = `Airport Service - ${airportPrice} JOD (${service.toAirport ? 'To Airport' : 'From Airport'})`;
-      break;
+function validateBody(body) {
+  const { route, date, service, pickup, destination, skip_destination } = body;
+  if (!route || !service || !pickup) {
+    return 'Missing required fields';
+  }
+  if (pickup.latitude == null || pickup.longitude == null) {
+    return 'Pickup must include coordinates';
+  }
+  const destPending = skip_destination === true || destination?.pending === true;
+  if (!destPending) {
+    if (!destination || destination.latitude == null || destination.longitude == null) {
+      return 'Destination must include coordinates, or use skip destination';
     }
-    case 'instant':
-      serviceDesc = `Instant Order: ${service.description}`;
-      break;
-    default:
-      serviceDesc = 'Unknown service';
   }
-
-  const pickupMapsUrl = `https://www.google.com/maps?q=${pickup.latitude},${pickup.longitude}`;
-  const destMapsUrl = `https://www.google.com/maps?q=${destination.latitude},${destination.longitude}`;
-
-  return `
-New Trip5 Order
----
-Route: ${routeText}
-Date: ${dateStr} at ${timeStr}
-Service: ${serviceDesc}
----
-Pickup: ${pickup.address}
-  Map: ${pickupMapsUrl}
-
-Destination: ${destination.address}
-  Map: ${destMapsUrl}
----
-Name: ${fullName}
-Phone: ${phoneNumber}
----
-  `.trim();
-}
-
-async function sendWhatsAppMessage(phoneNumberId, accessToken, to, templateParams) {
-  const url = `https://graph.facebook.com/${META_GRAPH_VERSION}/${phoneNumberId}/messages`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      to: to.replace(/\D/g, ''),
-      type: 'template',
-      template: {
-        name: process.env.WHATSAPP_TEMPLATE_NAME,
-        language: { code: process.env.WHATSAPP_TEMPLATE_LANGUAGE || 'ar' },
-        components: [
-          {
-            type: 'body',
-            parameters: templateParams,
-          },
-        ],
-      },
-    }),
-  });
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`WhatsApp API ${res.status}: ${errText}`);
+  if (!date) {
+    return 'Missing date';
   }
-  return res.json();
+  return null;
 }
 
 export default async function handler(req, res) {
@@ -102,93 +30,109 @@ export default async function handler(req, res) {
     return res.status(405).json({ error: 'Method not allowed' });
   }
 
-  try {
-    let body = req.body;
-    if (typeof body === 'string') {
+  let body = req.body;
+  if (typeof body === 'string') {
+    try {
       body = JSON.parse(body);
+    } catch {
+      return res.status(400).json({ error: 'Invalid JSON' });
     }
-    if (!body) {
-      return res.status(400).json({ error: 'Invalid request body' });
-    }
-    const { route, date, service, fullName, phoneNumber, pickup, destination } = body;
-    if (!route || !service || !fullName || !phoneNumber || !pickup || !destination) {
-      return res.status(400).json({ error: 'Missing required fields' });
-    }
-
-    const token = process.env.WHATSAPP_ACCESS_TOKEN;
-    const phoneNumberId = process.env.WHATSAPP_PHONE_NUMBER_ID;
-    const recipient1 = process.env.WHATSAPP_RECIPIENT_PHONE;
-
-    if (!token || !phoneNumberId || !recipient1) {
-      return res.status(500).json({
-        error:
-          'WhatsApp not configured. Set WHATSAPP_ACCESS_TOKEN, WHATSAPP_PHONE_NUMBER_ID, and WHATSAPP_RECIPIENT_PHONE in environment variables.',
-      });
-    }
-
-    const routeTextAr = {
-      irbid_to_amman: 'إربد → عمّان',
-      amman_to_irbid: 'عمّان → إربد',
-      airport_to_amman: 'من المطار إلى عمّان',
-      airport_to_irbid: 'من المطار إلى إربد',
-      amman_to_airport: 'من عمّان إلى المطار',
-      irbid_to_airport: 'من إربد إلى المطار',
-    };
-    const routeText = routeTextAr[route] || route;
-    const d = new Date(date);
-    const dateStr = d.toLocaleDateString('ar-JO', {
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    });
-    const timeStr = d.toLocaleTimeString('ar-JO', { hour: '2-digit', minute: '2-digit' });
-
-    let serviceDesc = '';
-    switch (service.type) {
-      case 'basic':
-        serviceDesc = 'خدمة عادية - 5 دنانير';
-        break;
-      case 'private':
-        serviceDesc = `خدمة خاصة - 15 دينار (${service.alone ? 'شخص واحد' : 'عائلة'})`;
-        break;
-      case 'airport': {
-        const airportPrice = ['airport_to_irbid', 'irbid_to_airport'].includes(route) ? 25 : 15;
-        serviceDesc = `خدمة المطار - ${airportPrice} دينار (${service.toAirport ? 'إلى المطار' : 'من المطار'})`;
-        break;
-      }
-      case 'instant':
-        serviceDesc = `طلب فوري: ${service.description}`;
-        break;
-      default:
-        serviceDesc = 'خدمة غير معروفة';
-    }
-
-    const pickupMapsUrl = `https://www.google.com/maps?q=${pickup.latitude},${pickup.longitude}`;
-    const destMapsUrl = `https://www.google.com/maps?q=${destination.latitude},${destination.longitude}`;
-
-    const templateParams = [
-      { type: 'text', text: routeText }, // {{1}} المسار
-      { type: 'text', text: `${dateStr} ${timeStr}` }, // {{2}} التاريخ/الوقت
-      { type: 'text', text: serviceDesc }, // {{3}} نوع الخدمة
-      { type: 'text', text: pickup.address }, // {{4}} عنوان الانطلاق
-      { type: 'text', text: pickupMapsUrl }, // {{5}} رابط خريطة الانطلاق
-      { type: 'text', text: destination.address }, // {{6}} عنوان الوجهة
-      { type: 'text', text: destMapsUrl }, // {{7}} رابط خريطة الوجهة
-      { type: 'text', text: fullName }, // {{8}} اسم العميل
-      { type: 'text', text: phoneNumber }, // {{9}} رقم الهاتف
-    ];
-
-    const recipients = [recipient1];
-    const recipient2 = process.env.WHATSAPP_RECIPIENT_PHONE_2;
-    if (recipient2) recipients.push(recipient2);
-
-    const results = await Promise.all(
-      recipients.map((to) => sendWhatsAppMessage(phoneNumberId, token, to, templateParams))
-    );
-
-    return res.status(200).json({ success: true, messageIds: results.map((r) => r.messages?.[0]?.id).filter(Boolean) });
-  } catch (err) {
-    console.error('Order API error:', err);
-    return res.status(500).json({ error: 'Failed to process order' });
   }
+  if (!body) {
+    return res.status(400).json({ error: 'Invalid request body' });
+  }
+
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+  if (!token) {
+    return res.status(401).json({ error: 'Missing or invalid Authorization header' });
+  }
+
+  let supabase;
+  try {
+    supabase = getSupabaseAdmin();
+  } catch (e) {
+    console.error(e);
+    return res.status(500).json({ error: 'Server configuration error' });
+  }
+
+  const {
+    data: { user },
+    error: userErr,
+  } = await supabase.auth.getUser(token);
+
+  if (userErr || !user) {
+    return res.status(401).json({ error: 'Invalid or expired session' });
+  }
+
+  const errMsg = validateBody(body);
+  if (errMsg) {
+    return res.status(400).json({ error: errMsg });
+  }
+
+  const { route, date, service, pickup, destination, skip_destination } = body;
+
+  const { data: profile, error: profileErr } = await supabase
+    .from('profiles')
+    .select('full_name, phone')
+    .eq('id', user.id)
+    .maybeSingle();
+
+  if (profileErr) {
+    console.error('Profile fetch:', profileErr);
+    return res.status(500).json({ error: 'Could not load profile' });
+  }
+
+  const passengerName = (profile?.full_name || '').trim() || user.email || 'Passenger';
+  const passengerPhone = (profile?.phone || '').trim();
+  if (!passengerPhone) {
+    return res.status(400).json({
+      error: 'Add your phone number in your profile before booking.',
+    });
+  }
+
+  const scheduledAt = new Date(date);
+  if (Number.isNaN(scheduledAt.getTime())) {
+    return res.status(400).json({ error: 'Invalid date' });
+  }
+
+  const destPending = skip_destination === true || destination?.pending === true;
+  const row = {
+    user_id: user.id,
+    route,
+    scheduled_at: scheduledAt.toISOString(),
+    service,
+    pickup: {
+      latitude: pickup.latitude,
+      longitude: pickup.longitude,
+      address: pickup.address || '',
+    },
+    destination: destPending
+      ? {
+          pending: true,
+          latitude: null,
+          longitude: null,
+          address: 'Pending',
+        }
+      : {
+          latitude: destination.latitude,
+          longitude: destination.longitude,
+          address: destination.address || '',
+        },
+    passenger_name: passengerName,
+    passenger_phone: passengerPhone,
+    status: 'pending',
+  };
+
+  const { data: inserted, error: insertErr } = await supabase.from('orders').insert(row).select('id').single();
+
+  if (insertErr) {
+    console.error('Insert order:', insertErr);
+    return res.status(500).json({ error: 'Failed to save order' });
+  }
+
+  return res.status(200).json({
+    success: true,
+    id: inserted.id,
+  });
 }

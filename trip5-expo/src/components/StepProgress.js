@@ -4,7 +4,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, ios } from '../theme';
 import i18n from '../i18n';
 
-const STEPS = [1, 2, 3, 4, 5];
+const STEPS = [1, 2, 3, 4];
 
 export default function StepProgress({ current, total, heading, routeText }) {
   return (

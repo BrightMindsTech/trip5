@@ -23,6 +23,7 @@ iOS app for booking rides between Irbid and Amman, Jordan.
    cp trip5-expo/.env.example trip5-expo/.env
    cp backend/.env.example backend/.env
    ```
+   - **Supabase:** create a project, run `supabase/migrations/001_profiles_and_orders.sql` in the SQL Editor, then set `EXPO_PUBLIC_SUPABASE_*` in `trip5-expo/.env` and `SUPABASE_*` (service role) in `backend/.env`.
 5. **Expo app**:
    ```bash
    cd trip5-expo && npm install && npm start
@@ -86,15 +87,13 @@ trip5/
 │   ├── ar.lproj/
 │   └── Info.plist
 ├── trip5-expo/               # Expo app (Expo Go)
-├── backend/                  # Node API (Render / Vercel), sends orders via WhatsApp
+├── backend/                  # Node API (Render), stores orders in Supabase Postgres
 │   ├── api/orders.js
 │   ├── server.js
 │   └── package.json
 └── README.md
 ```
 
-## Order recipients
+## Orders
 
-Configured via backend environment variables (e.g. on Render):
-- `WHATSAPP_RECIPIENT_PHONE`: main number (e.g. 962771234567)
-- `WHATSAPP_RECIPIENT_PHONE_2`: optional second number
+Passengers sign in with **Supabase Auth**; orders are saved to the database for your driver flow (configure separately).

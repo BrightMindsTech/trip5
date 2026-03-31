@@ -1,23 +1,17 @@
 # Trip5 Backend
 
-API that receives orders from the Trip5 app and sends them via **Meta WhatsApp Cloud API** to the owner(s). It can run as:
-
-- A **Render Web Service** (Node server on `server.js`)
-- A **Vercel serverless function** (using `api/orders.js`)
+API that receives **authenticated** orders from the Trip5 app and **stores them in Supabase Postgres** (WhatsApp removed). Runs as a **Render Web Service** (`server.js`).
 
 ## Setup
 
-1. **Meta WhatsApp Cloud API**
-   - Create an app at [Meta for Developers](https://developers.facebook.com/apps).
-   - Add the **WhatsApp** product and use **WhatsApp Cloud API**.
-   - In **API Setup** you’ll see **Phone number ID** and **Temporary access token**. For production, create a **System User** and generate a **permanent access token** with `whatsapp_business_messaging` and `whatsapp_business_management`.
-   - Add your recipient phone number in the WhatsApp test/sandbox (or use a verified business number) so it can receive messages.
+1. **Supabase**
+   - Create a project at [supabase.com](https://supabase.com).
+   - Run the SQL in `../supabase/migrations/001_profiles_and_orders.sql` in the SQL Editor (creates `profiles`, `orders`, RLS, and signup trigger).
+   - In **Project Settings → API**, copy **Project URL** and **service_role** key (server only).
 
-2. **Environment variables** (Render, Vercel, or local `.env`):
-   - `WHATSAPP_ACCESS_TOKEN`: permanent access token from Meta
-   - `WHATSAPP_PHONE_NUMBER_ID`: the sending Phone Number ID from Meta (API Setup)
-   - `WHATSAPP_RECIPIENT_PHONE`: where to send orders (e.g. `962771234567`, no `+`)
-   - `WHATSAPP_RECIPIENT_PHONE_2`: (optional) second recipient
+2. **Environment variables** (Render or local `.env`):
+   - `SUPABASE_URL`
+   - `SUPABASE_SERVICE_ROLE_KEY` (never expose to the client app)
 
 3. **Install and run locally**
    ```bash
@@ -25,18 +19,16 @@ API that receives orders from the Trip5 app and sends them via **Meta WhatsApp C
    npm install
    npm start
    ```
-   API: `http://localhost:3000/api/orders`.
+   API: `POST http://localhost:3000/api/orders` with header `Authorization: Bearer <Supabase access token>` and JSON body (route, date, service, pickup, destination).
 
 4. **Deploy on Render**
    - New *Web Service* from your repo.
    - **Root Directory**: `backend`
    - **Build**: `npm install`
    - **Start**: `npm start`
-   - Add the WhatsApp env vars above in the Render dashboard.
-   - Set `EXPO_PUBLIC_API_BASE_URL` in the app to your Render URL.
+   - Add `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY` in the Render dashboard.
+   - Set `EXPO_PUBLIC_API_BASE_URL` in the Expo app to your Render URL (no trailing slash).
 
-5. **Deploy on Vercel** (optional): from `backend`, `npx vercel`, then set the same env vars in the project.
+## Orders
 
-## Changing the recipient phone number
-
-Update `WHATSAPP_RECIPIENT_PHONE` (and optionally `WHATSAPP_RECIPIENT_PHONE_2`) in your environment (Render dashboard or `.env`), then redeploy or restart. No code change.
+Rows are stored in `public.orders` with `status` default `pending`. Driver-facing APIs can be added later.

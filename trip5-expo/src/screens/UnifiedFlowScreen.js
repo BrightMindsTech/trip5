@@ -22,6 +22,8 @@ import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Location from 'expo-location';
 import i18n from '../i18n';
 import { colors, ios } from '../theme';
+import EmbeddedTripMap from '../components/EmbeddedTripMap';
+import { useAuth } from '../context/AuthContext';
 
 const AMMAN_PHOTO = require('../../assets/amman-photo.png');
 const IRBID_PHOTO = require('../../assets/irbid-photo.png');
@@ -93,17 +95,20 @@ export default function UnifiedFlowScreen({
   goBack,
   currentStep,
   canProceedFromRoute,
-  canProceedFromService,
-  canProceedFromDetails,
+  canProceedFromLocations,
+  canProceedFromServiceSchedule,
+  scheduleStep,
+  setScheduleStep,
   orderDate,
   isSubmitting,
   submitError,
   orderSent,
   submit,
   resetOrder,
-  isValidPhone,
 }) {
   const isArabic = i18n.locale === 'ar';
+  const { profile } = useAuth();
+  const [mapMode, setMapMode] = useState('pickup');
   const [isSaving, setIsSaving] = useState(false);
   const [contentOpacity] = useState(() => new Animated.Value(1));
   const [contentScale] = useState(() => new Animated.Value(1));
@@ -160,7 +165,6 @@ export default function UnifiedFlowScreen({
       setAirportFlowStep(null);
       setShowAirportModal(false);
     }
-    if (currentStep !== 2) setScheduleStep('date');
   }, [currentStep]);
 
   const QUEEN_ALIA = {
@@ -170,7 +174,7 @@ export default function UnifiedFlowScreen({
   };
 
   useEffect(() => {
-    if (currentStep !== 4) return;
+    if (currentStep !== 2) return;
     const r = order.route;
     if (['airport_to_amman', 'airport_to_irbid'].includes(r)) {
       updateOrder({ pickup: QUEEN_ALIA });
@@ -194,7 +198,6 @@ export default function UnifiedFlowScreen({
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [airportFlowStep, setAirportFlowStep] = useState(null);
   const [showAirportModal, setShowAirportModal] = useState(false);
-  const [scheduleStep, setScheduleStep] = useState('date');
 
   const now = new Date();
   const minDate = new Date(now);
@@ -428,14 +431,6 @@ export default function UnifiedFlowScreen({
     return '';
   };
   const routeText = getRouteText();
-  const fullNameError = !order.fullName.trim() ? i18n.t('error_required') : null;
-  const phoneError = !order.phoneNumber
-    ? i18n.t('error_required')
-    : !isValidPhone(order.phoneNumber)
-      ? i18n.t('error_invalid_phone')
-      : null;
-  const pickupError = !order.pickup ? i18n.t('error_select_location') : null;
-  const destError = !order.destination ? i18n.t('error_select_location') : null;
 
   if (orderSent) {
     return (
@@ -504,6 +499,21 @@ export default function UnifiedFlowScreen({
       }
 
       case 2: {
+        return (
+          <View style={styles.step2Fullscreen}>
+            <EmbeddedTripMap
+              order={order}
+              updateOrder={updateOrder}
+              activeMode={mapMode}
+              setActiveMode={setMapMode}
+              onNext={() => canProceedFromLocations && handleSelectOption(() => {})}
+              nextDisabled={!canProceedFromLocations || isSaving}
+            />
+          </View>
+        );
+      }
+
+      case 3: {
         const hour12 = timeToShow.getHours() % 12 || 12;
         const minute = timeToShow.getMinutes();
         const isPM = timeToShow.getHours() >= 12;
@@ -517,11 +527,15 @@ export default function UnifiedFlowScreen({
         };
         const etaSuffix = etaLatest.getHours() >= 12 ? 'PM' : 'AM';
         const etaStr = `${i18n.t('eta')} ${formatEtaTime(etaEarliest)}–${formatEtaTime(etaLatest)} ${etaSuffix}`;
+        const isAirportRoute = ['airport_to_amman', 'airport_to_irbid', 'amman_to_airport', 'irbid_to_airport'].includes(
+          order.route
+        );
         return (
-          <ScrollView style={styles.stepScroll} contentContainerStyle={styles.step2Content} showsVerticalScrollIndicator={false}>
-            <Text style={styles.scheduleTitle}>{i18n.t('step_heading_2')}</Text>
-            {scheduleStep === 'date' ? (
+          <ScrollView style={styles.stepScroll} contentContainerStyle={styles.step3Content} showsVerticalScrollIndicator={false}>
+            <Text style={styles.servicePageTitle}>{i18n.t('step_heading_3')}</Text>
+            {scheduleStep === 'date' && (
               <>
+                <Text style={styles.servicePageSubtitle}>{i18n.t('schedule_subtitle')}</Text>
                 <Text style={styles.scheduleSubtitle}>{i18n.t('select_date_first')}</Text>
                 <ScheduleOptionCard
                   icon="calendar"
@@ -554,9 +568,10 @@ export default function UnifiedFlowScreen({
                   <Text style={styles.primaryButtonArrow}>→</Text>
                 </Pressable>
               </>
-            ) : (
+            )}
+            {scheduleStep === 'time' && (
               <>
-                <Text style={styles.scheduleSubtitle}>{i18n.t('schedule_subtitle')}</Text>
+                <Text style={styles.servicePageSubtitle}>{i18n.t('schedule_subtitle')}</Text>
                 <TouchableOpacity style={styles.scheduleBack} onPress={() => setScheduleStep('date')}>
                   <Ionicons name="chevron-back" size={18} color={colors.primary} />
                   <Text style={styles.scheduleBackText}>{i18n.t('back')}</Text>
@@ -591,9 +606,118 @@ export default function UnifiedFlowScreen({
                   </Pressable>
                   <Text style={styles.etaText}>{etaStr}</Text>
                 </View>
+                {isAirportRoute ? (
+                  <Pressable
+                    style={({ pressed }) => [
+                      styles.primaryButton,
+                      styles.primaryButtonWithArrow,
+                      !canProceedFromServiceSchedule && styles.buttonDisabled,
+                      pressed && styles.primaryButtonPressed,
+                    ]}
+                    onPress={() => canProceedFromServiceSchedule && handleSelectOption(() => {})}
+                    disabled={!canProceedFromServiceSchedule || isSaving}
+                  >
+                    <Text style={styles.primaryButtonText}>{i18n.t('next')}</Text>
+                    <Text style={styles.primaryButtonArrow}>→</Text>
+                  </Pressable>
+                ) : (
+                  <Pressable
+                    style={({ pressed }) => [styles.primaryButton, styles.primaryButtonWithArrow, pressed && styles.primaryButtonPressed]}
+                    onPress={() => !isSaving && setScheduleStep('service')}
+                    disabled={isSaving}
+                  >
+                    <Text style={styles.primaryButtonText}>{i18n.t('continue_to_services')}</Text>
+                    <Text style={styles.primaryButtonArrow}>→</Text>
+                  </Pressable>
+                )}
+              </>
+            )}
+            {scheduleStep === 'service' && !isAirportRoute && (
+              <>
+                <TouchableOpacity style={styles.scheduleBack} onPress={() => setScheduleStep('time')}>
+                  <Ionicons name="chevron-back" size={18} color={colors.primary} />
+                  <Text style={styles.scheduleBackText}>{i18n.t('back_to_schedule')}</Text>
+                </TouchableOpacity>
+                <Text style={[styles.servicePageTitle, { marginTop: 4 }]}>{i18n.t('choose_service')}</Text>
+                <Text style={styles.servicePageSubtitle}>{i18n.t('service_subtitle')}</Text>
+                <ServiceCardNew
+                  icon="people"
+                  title={i18n.t('service_basic')}
+                  subtitle={i18n.t('service_basic_desc_card')}
+                  price={5}
+                  isSelected={order.service?.type === 'basic'}
+                  showWatermark
+                  onPress={() => {
+                    if (isSaving) return;
+                    setService({ type: 'basic' });
+                    setShowPrivate(false);
+                    setShowInstant(false);
+                  }}
+                  disabled={isSaving}
+                />
+                <ServiceCardNew
+                  icon="car"
+                  title={i18n.t('service_private')}
+                  subtitle={i18n.t('service_private_desc_card')}
+                  price={15}
+                  isSelected={order.service?.type === 'private'}
+                  onPress={() => {
+                    setShowPrivate(true);
+                    setShowInstant(false);
+                  }}
+                />
+                {showPrivate && (
+                  <View style={[styles.subOptions, isArabic && styles.subOptionsArabic]}>
+                    <TouchableOpacity
+                      style={[styles.subBtn, order.service?.alone && styles.subBtnSelected]}
+                      onPress={() => !isSaving && setService({ type: 'private', alone: true })}
+                      disabled={isSaving}
+                    >
+                      <Text style={order.service?.alone ? styles.subBtnTextSelected : styles.subBtnText}>
+                        {i18n.t('alone')}
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[styles.subBtn, order.service?.alone === false && styles.subBtnSelected]}
+                      onPress={() => !isSaving && setService({ type: 'private', alone: false })}
+                      disabled={isSaving}
+                    >
+                      <Text style={order.service?.alone === false ? styles.subBtnTextSelected : styles.subBtnText}>
+                        {i18n.t('family')}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
+                <InstantOrderCard
+                  title={i18n.t('service_instant')}
+                  subtitle={i18n.t('service_instant_desc_card')}
+                  onPress={() => {
+                    setShowInstant(true);
+                    setShowPrivate(false);
+                  }}
+                />
+                {showInstant && (
+                  <TextInput
+                    style={styles.input}
+                    placeholder={i18n.t('enter_description')}
+                    value={instantDesc}
+                    onChangeText={(t) => setService({ type: 'instant', description: t })}
+                    multiline
+                  />
+                )}
+                <View style={styles.routeOptimizedBanner}>
+                  <View style={styles.routeOptimizedDot} />
+                  <Text style={styles.routeOptimizedText}>{i18n.t('route_optimized')}</Text>
+                </View>
                 <Pressable
-                  style={({ pressed }) => [styles.primaryButton, styles.primaryButtonWithArrow, pressed && styles.primaryButtonPressed]}
-                  onPress={() => handleSelectOption(() => {})}
+                  style={({ pressed }) => [
+                    styles.primaryButton,
+                    styles.primaryButtonWithArrow,
+                    !canProceedFromServiceSchedule && styles.buttonDisabled,
+                    pressed && styles.primaryButtonPressed,
+                  ]}
+                  onPress={() => canProceedFromServiceSchedule && handleSelectOption(() => {})}
+                  disabled={!canProceedFromServiceSchedule || isSaving}
                 >
                   <Text style={styles.primaryButtonText}>{i18n.t('next')}</Text>
                   <Text style={styles.primaryButtonArrow}>→</Text>
@@ -604,244 +728,7 @@ export default function UnifiedFlowScreen({
         );
       }
 
-      case 3:
-        return (
-          <ScrollView style={styles.stepScroll} contentContainerStyle={styles.step3Content} showsVerticalScrollIndicator={false}>
-            <Text style={styles.servicePageTitle}>{i18n.t('step_heading_3')}</Text>
-            <Text style={styles.servicePageSubtitle}>{i18n.t('service_subtitle')}</Text>
-            <ServiceCardNew
-              icon="people"
-              title={i18n.t('service_basic')}
-              subtitle={i18n.t('service_basic_desc_card')}
-              price={5}
-              isSelected={order.service?.type === 'basic'}
-              showWatermark
-              onPress={() =>
-                !isSaving &&
-                handleSelectOption(() => {
-                  setService({ type: 'basic' });
-                  setShowPrivate(false);
-                  setShowInstant(false);
-                })
-              }
-              disabled={isSaving}
-            />
-            <ServiceCardNew
-              icon="car"
-              title={i18n.t('service_private')}
-              subtitle={i18n.t('service_private_desc_card')}
-              price={15}
-              isSelected={order.service?.type === 'private'}
-              onPress={() => {
-                setShowPrivate(true);
-                setShowInstant(false);
-              }}
-            />
-            {showPrivate && (
-              <View style={[styles.subOptions, isArabic && styles.subOptionsArabic]}>
-                <TouchableOpacity
-                  style={[styles.subBtn, order.service?.alone && styles.subBtnSelected]}
-                  onPress={() =>
-                    !isSaving &&
-                    handleSelectOption(() => setService({ type: 'private', alone: true }))
-                  }
-                  disabled={isSaving}
-                >
-                  <Text style={order.service?.alone ? styles.subBtnTextSelected : styles.subBtnText}>
-                    {i18n.t('alone')}
-                  </Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={[styles.subBtn, order.service?.alone === false && styles.subBtnSelected]}
-                  onPress={() =>
-                    !isSaving &&
-                    handleSelectOption(() => setService({ type: 'private', alone: false }))
-                  }
-                  disabled={isSaving}
-                >
-                  <Text style={order.service?.alone === false ? styles.subBtnTextSelected : styles.subBtnText}>
-                    {i18n.t('family')}
-                  </Text>
-                </TouchableOpacity>
-              </View>
-            )}
-            <InstantOrderCard
-              title={i18n.t('service_instant')}
-              subtitle={i18n.t('service_instant_desc_card')}
-              onPress={() => {
-                setShowInstant(true);
-                setShowPrivate(false);
-              }}
-            />
-            {showInstant && (
-              <>
-                <TextInput
-                  style={styles.input}
-                  placeholder={i18n.t('enter_description')}
-                  value={instantDesc}
-                  onChangeText={(t) => setService({ type: 'instant', description: t })}
-                  multiline
-                />
-                <TouchableOpacity
-                  style={[styles.primaryButton, !canProceedFromService && styles.buttonDisabled]}
-                  onPress={() =>
-                    canProceedFromService &&
-                    handleSelectOption(() => setService({ type: 'instant', description: instantDesc }))
-                  }
-                  disabled={!canProceedFromService || isSaving}
-                >
-                  <Text style={styles.primaryButtonText}>{i18n.t('next')}</Text>
-                </TouchableOpacity>
-              </>
-            )}
-            <View style={styles.routeOptimizedBanner}>
-              <View style={styles.routeOptimizedDot} />
-              <Text style={styles.routeOptimizedText}>{i18n.t('route_optimized')}</Text>
-            </View>
-          </ScrollView>
-        );
-
       case 4:
-        return (
-          <KeyboardAvoidingView
-            style={styles.step4Content}
-            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          >
-            <ScrollView
-              style={styles.step4Scroll}
-              contentContainerStyle={styles.step4ScrollContent}
-              showsVerticalScrollIndicator={false}
-              keyboardShouldPersistTaps="handled"
-              keyboardDismissMode="on-drag"
-            >
-              <Pressable style={styles.step4DismissArea} onPress={() => Keyboard.dismiss()}>
-                <Text style={styles.detailsPageTitle}>{i18n.t('step_heading_4')}</Text>
-                <Text style={styles.detailsPageSubtitle}>{i18n.t('details_subtitle')}</Text>
-                <View style={styles.dismissKeyboardHint}>
-                  <Ionicons name="chevron-down" size={16} color={colors.primary} />
-                  <Text style={styles.dismissKeyboardHintText}>{i18n.t('close_keyboard')}</Text>
-                </View>
-              <Text style={styles.detailsLabel}>{i18n.t('full_name')}</Text>
-              <View style={[styles.detailsInputWrap, fullNameError && styles.detailsInputWrapError]}>
-                <Ionicons name="person-outline" size={20} color={colors.textSecondary} style={styles.detailsInputIcon} />
-                <TextInput
-                  style={styles.detailsInput}
-                  placeholder={i18n.t('enter_full_name')}
-                  value={order.fullName}
-                  onChangeText={(t) => updateOrder({ fullName: t })}
-                  placeholderTextColor={colors.placeholder}
-                  returnKeyType="next"
-                  onSubmitEditing={() => Keyboard.dismiss()}
-                />
-              </View>
-              {fullNameError && (
-                <View style={styles.errorRow}>
-                  <Ionicons name="alert-circle" size={16} color={colors.error} />
-                  <Text style={styles.detailsError}>{fullNameError}</Text>
-                </View>
-              )}
-              <Text style={styles.detailsLabel}>{i18n.t('phone_number')}</Text>
-              <View style={[styles.detailsInputWrap, phoneError && styles.detailsInputWrapError]}>
-                <Ionicons name="call-outline" size={20} color={colors.textSecondary} style={styles.detailsInputIcon} />
-                <TextInput
-                  style={styles.detailsInput}
-                  placeholder="+962 7X XXX XXXX"
-                  value={order.phoneNumber}
-                  onChangeText={(t) => updateOrder({ phoneNumber: t })}
-                  keyboardType="phone-pad"
-                  placeholderTextColor={colors.placeholder}
-                  returnKeyType="done"
-                  onSubmitEditing={() => Keyboard.dismiss()}
-                />
-              </View>
-              {phoneError && (
-                <View style={styles.errorRow}>
-                  <Ionicons name="alert-circle" size={16} color={colors.error} />
-                  <Text style={styles.detailsError}>{phoneError}</Text>
-                </View>
-              )}
-              <Text style={styles.detailsLabel}>{i18n.t('pickup_location')}</Text>
-              <View style={[styles.detailsInputWrap, pickupError && styles.detailsInputWrapError]}>
-                <Ionicons name="locate" size={20} color={colors.primary} style={styles.detailsInputIcon} />
-                <TextInput
-                  style={styles.detailsInput}
-                  placeholder={i18n.t('search_pickup')}
-                  value={order.pickup ? order.pickup.address : pickupManualText}
-                  onChangeText={(t) => {
-                    setPickupManualText(t);
-                    if (order.pickup) updateOrder({ pickup: null });
-                  }}
-                  placeholderTextColor={colors.placeholder}
-                  returnKeyType="next"
-                  onSubmitEditing={() => Keyboard.dismiss()}
-                />
-              </View>
-              {pickupError && (
-                <View style={styles.errorRow}>
-                  <Ionicons name="alert-circle" size={16} color={colors.error} />
-                  <Text style={styles.detailsError}>{pickupError}</Text>
-                </View>
-              )}
-              <View style={styles.detailsBtnRow}>
-                <Pressable
-                  style={({ pressed }) => [styles.detailsUseLocationBtn, loadingPickup && styles.btnDisabled, pressed && { opacity: 0.8 }]}
-                  onPress={() => getMyLocation(true)}
-                  disabled={loadingPickup}
-                >
-                  {loadingPickup ? (
-                    <ActivityIndicator size="small" color={colors.primary} />
-                  ) : (
-                    <>
-                      <Ionicons name="navigate" size={18} color={colors.primary} style={styles.detailsBtnIcon} />
-                      <Text style={styles.detailsUseLocationText}>{i18n.t('use_my_location')}</Text>
-                    </>
-                  )}
-                </Pressable>
-              </View>
-              <Text style={styles.detailsLabel}>{i18n.t('destination')}</Text>
-              <View style={[styles.detailsInputWrap, destError && styles.detailsInputWrapError]}>
-                <Ionicons name="location" size={20} color={colors.primary} style={styles.detailsInputIcon} />
-                <TextInput
-                  style={styles.detailsInput}
-                  placeholder={i18n.t('where_going')}
-                  value={order.destination ? order.destination.address : destManualText}
-                  onChangeText={(t) => {
-                    setDestManualText(t);
-                    updateOrder({
-                      destination: t.trim()
-                        ? { address: t.trim(), latitude: null, longitude: null }
-                        : null,
-                    });
-                  }}
-                  placeholderTextColor={colors.placeholder}
-                  returnKeyType="done"
-                  onSubmitEditing={() => Keyboard.dismiss()}
-                />
-              </View>
-              {destError && (
-                <View style={styles.errorRow}>
-                  <Ionicons name="alert-circle" size={16} color={colors.error} />
-                  <Text style={styles.detailsError}>{destError}</Text>
-                </View>
-              )}
-              <Pressable
-                style={({ pressed }) => [styles.primaryButton, !canProceedFromDetails && styles.buttonDisabled, pressed && styles.primaryButtonPressed]}
-                onPress={() => canProceedFromDetails && handleSelectOption(() => {})}
-                disabled={!canProceedFromDetails || isSaving}
-              >
-                <Text style={styles.primaryButtonText}>{i18n.t('confirm_details')}</Text>
-              </Pressable>
-              <Text style={styles.termsText}>
-                {i18n.t('terms_prefix')}
-                <Text style={styles.termsLink} onPress={() => setShowTermsModal(true)}>{i18n.t('terms_link')}</Text>
-                .
-              </Text>
-              </Pressable>
-            </ScrollView>
-          </KeyboardAvoidingView>
-        );
-
-      case 5:
         return (
           <ScrollView style={styles.stepScroll} contentContainerStyle={styles.step5Content} showsVerticalScrollIndicator={false}>
             <Text style={styles.stepTitle}>{i18n.t('order_summary')}</Text>
@@ -852,9 +739,17 @@ export default function UnifiedFlowScreen({
             />
             <SummaryRow label={i18n.t('service')} value={getServiceText()} />
             <SummaryRow label={i18n.t('pickup_location')} value={order.pickup?.address || ''} />
-            <SummaryRow label={i18n.t('destination')} value={order.destination?.address || ''} />
-            <SummaryRow label={i18n.t('full_name')} value={order.fullName} />
-            <SummaryRow label={i18n.t('phone_number')} value={order.phoneNumber} />
+            <SummaryRow
+              label={i18n.t('destination')}
+              value={order.skipDestination ? i18n.t('no_destination_selected') : order.destination?.address || ''}
+            />
+            <SummaryRow label={i18n.t('full_name')} value={profile?.full_name || '—'} />
+            <SummaryRow label={i18n.t('phone_number')} value={profile?.phone || '—'} />
+            <Text style={styles.termsText}>
+              {i18n.t('terms_prefix')}
+              <Text style={styles.termsLink} onPress={() => setShowTermsModal(true)}>{i18n.t('terms_link')}</Text>
+              .
+            </Text>
             {submitError && (
               <View style={styles.errorBox}>
                 <Text style={styles.error}>{submitError}</Text>
@@ -880,7 +775,7 @@ export default function UnifiedFlowScreen({
   };
 
   return (
-    <View style={styles.container}>
+    <View style={[styles.container, currentStep === 2 && styles.containerMapStep]}>
       <Modal visible={isSubmitting} transparent animationType="fade">
         <View style={styles.submitLoadingOverlay}>
           <View style={styles.submitLoadingCard}>
@@ -905,6 +800,7 @@ export default function UnifiedFlowScreen({
               opacity: contentOpacity,
               transform: [{ scale: contentScale }],
             },
+            currentStep === 2 && styles.cardMapStep,
           ]}
         >
           {renderStepContent()}
@@ -1348,6 +1244,13 @@ const styles = StyleSheet.create({
     paddingTop: ios.spacing.md,
     backgroundColor: colors.background,
   },
+  containerMapStep: {
+    overflow: 'visible',
+    padding: 0,
+    paddingTop: 0,
+    margin: 0,
+    flex: 1,
+  },
   cardWrapper: {
     flex: 1,
     minHeight: 320,
@@ -1369,6 +1272,16 @@ const styles = StyleSheet.create({
     }),
     overflow: 'hidden',
   },
+  cardMapStep: {
+    overflow: 'visible',
+    padding: 0,
+    borderRadius: 0,
+    backgroundColor: 'transparent',
+    shadowOpacity: 0,
+    shadowRadius: 0,
+    shadowOffset: { width: 0, height: 0 },
+    elevation: 0,
+  },
   stepScroll: {
     flex: 1,
   },
@@ -1377,6 +1290,11 @@ const styles = StyleSheet.create({
   },
   step2Content: {
     paddingBottom: ios.spacing.xxl,
+  },
+  step2Fullscreen: {
+    flex: 1,
+    minHeight: 0,
+    position: 'relative',
   },
   step3Content: {
     paddingBottom: ios.spacing.xxl,

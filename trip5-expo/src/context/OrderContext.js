@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { submitOrder } from '../api';
+import { useAuth } from './AuthContext';
 
 const OrderContext = createContext();
 
@@ -10,93 +11,119 @@ const initialOrder = {
   isToday: true,
   scheduledDate: new Date(),
   service: null,
-  fullName: '',
-  phoneNumber: '',
   pickup: null,
   destination: null,
+  skipDestination: false,
 };
 
 export function OrderProvider({ children }) {
+  const { accessToken } = useAuth();
   const [order, setOrder] = useState(initialOrder);
   const [currentStep, setCurrentStep] = useState(1);
+  const [scheduleStep, setScheduleStep] = useState('date');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const [orderSent, setOrderSent] = useState(false);
+
+  useEffect(() => {
+    if (currentStep !== 3) setScheduleStep('date');
+  }, [currentStep]);
 
   const orderDate =
     order.scheduledDate instanceof Date
       ? order.scheduledDate
       : new Date(order.scheduledDate || Date.now());
 
-  const isValidPhone = (phone) => {
-    const cleaned = (phone || '').replace(/\s|-/g, '');
-    if (/^\+962/.test(cleaned)) return cleaned.length >= 12;
-    if (/^962/.test(cleaned)) return cleaned.length >= 11;
-    if (/^0/.test(cleaned)) return cleaned.length >= 9 && cleaned.length <= 10;
-    return cleaned.length >= 9 && cleaned.length <= 10;
-  };
-
   const updateOrder = useCallback((updates) => {
     setOrder((prev) => {
       const next = { ...prev, ...updates };
-      // When route changes (e.g. user goes back and picks Amman instead of Irbid), reset page 4 form
       if ('route' in updates && updates.route !== prev.route) {
-        next.fullName = '';
-        next.phoneNumber = '';
         next.pickup = null;
         next.destination = null;
+        next.service = null;
+        next.skipDestination = false;
       }
       return next;
     });
   }, []);
 
-  const isAirportRoute = ['airport_to_amman', 'airport_to_irbid', 'amman_to_airport', 'irbid_to_airport'].includes(order.route);
+  const isAirportRoute = ['airport_to_amman', 'airport_to_irbid', 'amman_to_airport', 'irbid_to_airport'].includes(
+    order.route
+  );
 
   const goNext = useCallback(() => {
-    setCurrentStep((s) => {
-      const next = s + 1;
-      if (s === 2 && isAirportRoute) return 4;
-      return Math.min(next, 5);
-    });
-  }, [order.route]);
+    setCurrentStep((s) => Math.min(s + 1, 4));
+  }, []);
 
   const goBack = useCallback(() => {
-    setCurrentStep((s) => {
-      if (s === 4 && isAirportRoute) return 2;
-      return Math.max(s - 1, 1);
-    });
-  }, [order.route]);
+    if (currentStep === 3) {
+      if (scheduleStep === 'service') {
+        setScheduleStep('time');
+        return;
+      }
+      if (scheduleStep === 'time') {
+        setScheduleStep('date');
+        return;
+      }
+    }
+    setCurrentStep((s) => Math.max(s - 1, 1));
+  }, [currentStep, scheduleStep]);
 
   const canProceedFromRoute = order.route !== null;
-  const canProceedFromService =
-    isAirportRoute ||
-    (order.service !== null &&
-      (order.service.type !== 'instant' || (order.service.description || '').trim()));
-  const canProceedFromDetails =
-    order.fullName.trim() &&
-    isValidPhone(order.phoneNumber) &&
+
+  const hasValidPickup =
     order.pickup &&
-    order.destination;
+    order.pickup.latitude != null &&
+    order.pickup.longitude != null;
+  const hasValidDestination =
+    order.destination &&
+    order.destination.latitude != null &&
+    order.destination.longitude != null;
+
+  const canProceedFromLocations =
+    hasValidPickup && (order.skipDestination || hasValidDestination);
+
+  const serviceOk =
+    isAirportRoute ||
+    (order.service &&
+      (order.service.type !== 'instant' || (order.service.description || '').trim()));
+
+  const canProceedFromServiceSchedule = isAirportRoute
+    ? scheduleStep === 'time'
+    : scheduleStep === 'service' && serviceOk;
 
   const buildOrderPayload = useCallback(() => {
-    const payload = {
+    const base = {
       route: order.route,
       date: orderDate.toISOString(),
       service: formatService(order.service),
-      fullName: order.fullName.trim(),
-      phoneNumber: order.phoneNumber.trim(),
       pickup: {
         latitude: order.pickup.latitude,
         longitude: order.pickup.longitude,
         address: order.pickup.address,
       },
+    };
+    if (order.skipDestination) {
+      return {
+        ...base,
+        skip_destination: true,
+        destination: {
+          pending: true,
+          latitude: null,
+          longitude: null,
+          address: 'Pending',
+        },
+      };
+    }
+    return {
+      ...base,
+      skip_destination: false,
       destination: {
         latitude: order.destination.latitude,
         longitude: order.destination.longitude,
         address: order.destination.address,
       },
     };
-    return payload;
   }, [order, orderDate]);
 
   const formatService = (service) => {
@@ -109,22 +136,28 @@ export function OrderProvider({ children }) {
   };
 
   const submit = useCallback(async () => {
-    if (!order.pickup || !order.destination) return;
+    if (!order.pickup) return;
+    if (!order.skipDestination && (!order.destination || order.destination.latitude == null)) return;
+    if (!accessToken) {
+      setSubmitError('Not signed in.');
+      return;
+    }
     setIsSubmitting(true);
     setSubmitError(null);
     try {
-      await submitOrder(buildOrderPayload());
+      await submitOrder(buildOrderPayload(), accessToken);
       setOrderSent(true);
     } catch (err) {
       setSubmitError(err.message || 'Failed to send. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
-  }, [order, buildOrderPayload]);
+  }, [order, buildOrderPayload, accessToken]);
 
   const resetOrder = useCallback(() => {
     setOrder(initialOrder);
     setCurrentStep(1);
+    setScheduleStep('date');
     setIsSubmitting(false);
     setSubmitError(null);
     setOrderSent(false);
@@ -137,9 +170,11 @@ export function OrderProvider({ children }) {
     goNext,
     goBack,
     setCurrentStep,
+    scheduleStep,
+    setScheduleStep,
     canProceedFromRoute,
-    canProceedFromService,
-    canProceedFromDetails,
+    canProceedFromLocations,
+    canProceedFromServiceSchedule,
     orderDate,
     isSubmitting,
     submitError,
@@ -147,7 +182,7 @@ export function OrderProvider({ children }) {
     submit,
     resetOrder,
     buildOrderPayload,
-    isValidPhone,
+    isAirportRoute,
   };
 
   return <OrderContext.Provider value={value}>{children}</OrderContext.Provider>;
