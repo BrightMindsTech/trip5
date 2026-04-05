@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useMemo } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import {
   View,
   Text,
@@ -18,6 +18,7 @@ import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
+import * as Location from 'expo-location';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import i18n, { initI18n } from '../i18n';
 import { colors, ios } from '../theme';
@@ -66,7 +67,24 @@ function hasLatLng(obj) {
   );
 }
 
-function TripMapPreview({ pickup, destination }) {
+function TripMapPreview({ pickup, destination, inRoute }) {
+  const [userLocationOk, setUserLocationOk] = useState(false);
+
+  useEffect(() => {
+    if (!inRoute) {
+      setUserLocationOk(false);
+      return;
+    }
+    let cancelled = false;
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (!cancelled) setUserLocationOk(status === 'granted');
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [inRoute]);
+
   const hasP = hasLatLng(pickup);
   const hasD = hasLatLng(destination) && !destination?.pending;
   const region = useMemo(() => {
@@ -112,6 +130,8 @@ function TripMapPreview({ pickup, destination }) {
         rotateEnabled={false}
         zoomEnabled={false}
         toolbarEnabled={false}
+        showsUserLocation={Boolean(inRoute && userLocationOk)}
+        showsMyLocationButton={false}
       >
         <Marker coordinate={{ latitude: pickup.latitude, longitude: pickup.longitude }} />
         {hasD ? (
@@ -389,8 +409,29 @@ export default function DashboardScreen({ navigation }) {
                   </Text>
                 </View>
               </LinearGradient>
+              {String(active.status || '').toLowerCase() === 'in_route' ? (
+                <TouchableOpacity
+                  style={styles.inRouteBanner}
+                  onPress={() => navigation.navigate('TripTracking', { orderId: active.id })}
+                  activeOpacity={0.85}
+                  accessibilityRole="button"
+                  accessibilityLabel={i18n.t('dashboard_in_route_banner_title')}
+                >
+                  <View style={styles.inRouteBannerTextCol}>
+                    <Text style={styles.inRouteBannerTitle}>{i18n.t('dashboard_in_route_banner_title')}</Text>
+                    <Text style={styles.inRouteBannerSub} numberOfLines={2}>
+                      {i18n.t('dashboard_in_route_banner_sub')}
+                    </Text>
+                  </View>
+                  <Ionicons name="chevron-forward" size={22} color={colors.primary} />
+                </TouchableOpacity>
+              ) : null}
               {showMapPreview ? (
-                <TripMapPreview pickup={active.pickup} destination={active.destination} />
+                <TripMapPreview
+                  pickup={active.pickup}
+                  destination={active.destination}
+                  inRoute={String(active.status || '').toLowerCase() === 'in_route'}
+                />
               ) : (
                 <View style={styles.mapPlaceholder}>
                   <Ionicons name="map-outline" size={40} color={colors.metallic} />
@@ -719,6 +760,31 @@ const styles = StyleSheet.create({
   activeLine: {
     fontSize: ios.fontSize.footnote,
     color: colors.white,
+    marginTop: 4,
+  },
+  inRouteBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.surface,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    borderRadius: ios.radius.lg,
+    paddingVertical: ios.spacing.md,
+    paddingHorizontal: ios.spacing.lg,
+    marginBottom: ios.spacing.md,
+    gap: ios.spacing.sm,
+  },
+  inRouteBannerTextCol: {
+    flex: 1,
+  },
+  inRouteBannerTitle: {
+    fontSize: ios.fontSize.callout,
+    fontWeight: ios.fontWeight.semibold,
+    color: colors.text,
+  },
+  inRouteBannerSub: {
+    fontSize: ios.fontSize.caption,
+    color: colors.placeholder,
     marginTop: 4,
   },
   emptyHint: {

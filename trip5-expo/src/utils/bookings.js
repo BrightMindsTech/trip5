@@ -2,10 +2,17 @@ import i18n from '../i18n';
 
 /**
  * Order status (string stored on orders.status):
- * pending, confirmed, driver_en_route, in_route — non-terminal (shown on active card when upcoming).
- * completed, cancelled — terminal (excluded from active upcoming card).
+ * pending, confirmed, driver_en_route, in_route — non-terminal.
+ * completed, cancelled — terminal (excluded from active card).
+ * Active slot: non-terminal and (scheduled_at >= now OR driver_en_route/in_route so ongoing trips stay visible after pickup time).
  */
 export const TERMINAL_STATUSES = new Set(['completed', 'cancelled']);
+
+const LIVE_ACTIVE_STATUSES = new Set(['driver_en_route', 'in_route']);
+
+export function isLiveActiveStatus(status) {
+  return LIVE_ACTIVE_STATUSES.has(String(status || '').toLowerCase());
+}
 
 export function getRouteLabel(route) {
   if (!route) return '';
@@ -53,6 +60,7 @@ export function partitionBookings(rows, now = new Date()) {
 
   const nonTerminalFuture = list.filter((r) => {
     if (isTerminalStatus(r.status)) return false;
+    if (isLiveActiveStatus(r.status)) return true;
     const scheduled = new Date(r.scheduled_at).getTime();
     return scheduled >= t;
   });

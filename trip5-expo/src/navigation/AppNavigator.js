@@ -11,6 +11,7 @@ import ActivityScreen from '../screens/ActivityScreen';
 import AccountScreen from '../screens/AccountScreen';
 import BookingFlowScreen from '../screens/BookingFlowScreen';
 import SavedPlacesScreen from '../screens/SavedPlacesScreen';
+import TripTrackingScreen from '../screens/TripTrackingScreen';
 import { colors } from '../theme';
 import i18n from '../i18n';
 
@@ -80,6 +81,7 @@ export default function AppNavigator() {
       <Stack.Navigator initialRouteName="Main" screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Main" component={MainTabs} />
         <Stack.Screen name="Booking" component={BookingStackScreen} />
+        <Stack.Screen name="TripTracking" component={TripTrackingScreen} />
         <Stack.Screen name="SavedPlaces" component={SavedPlacesScreen} />
       </Stack.Navigator>
     </NavigationContainer>

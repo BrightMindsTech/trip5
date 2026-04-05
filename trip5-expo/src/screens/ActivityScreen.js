@@ -14,7 +14,7 @@ import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import i18n, { initI18n } from '../i18n';
 import { colors, ios } from '../theme';
-import { useFocusEffect } from '@react-navigation/native';
+import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useUserOrders } from '../hooks/useUserOrders';
 import {
   partitionBookings,
@@ -27,6 +27,7 @@ import {
 } from '../utils/bookings';
 
 export default function ActivityScreen() {
+  const navigation = useNavigation();
   const { loading, error, rows, refreshing, onRefresh } = useUserOrders();
   const [localeState, setLocaleState] = useState(i18n.locale);
 
@@ -46,8 +47,9 @@ export default function ActivityScreen() {
     }, [])
   );
 
-  const { history } = partitionBookings(rows);
+  const { active, history } = partitionBookings(rows);
   const now = new Date();
+  const activeInRoute = String(active?.status || '').toLowerCase() === 'in_route';
 
   const renderHistoryRow = (item) => {
     const scheduled = new Date(item.scheduled_at);
@@ -102,7 +104,6 @@ export default function ActivityScreen() {
           }
           keyboardShouldPersistTaps="handled"
         >
-          <Text style={styles.sectionLabel}>{i18n.t('dashboard_history_section')}</Text>
           {loading ? (
             <View style={styles.centerBox}>
               <ActivityIndicator size="small" color={colors.primary} />
@@ -115,13 +116,61 @@ export default function ActivityScreen() {
                 <Text style={styles.retryBtnText}>{i18n.t('dashboard_retry')}</Text>
               </TouchableOpacity>
             </View>
-          ) : history.length === 0 ? (
-            <View style={styles.emptyWrap}>
-              <Ionicons name="receipt-outline" size={48} color={colors.border} />
-              <Text style={styles.emptyHint}>{i18n.t('dashboard_no_history')}</Text>
-            </View>
           ) : (
-            history.map(renderHistoryRow)
+            <>
+              {active ? (
+                <>
+                  <Text style={styles.sectionLabel}>{i18n.t('activity_active_section')}</Text>
+                  <View style={styles.activeCard}>
+                    <View style={styles.historyRowTop}>
+                      <Text style={styles.historyRoute} numberOfLines={2}>
+                        {getRouteLabel(active.route)}
+                      </Text>
+                      <View style={styles.badge}>
+                        <Text style={styles.badgeText}>{statusLabel(active.status)}</Text>
+                      </View>
+                    </View>
+                    <Text style={styles.historyWhen}>{formatBookingDate(active.scheduled_at, i18n.locale)}</Text>
+                    <Text style={styles.historyLine} numberOfLines={1}>
+                      {i18n.t('pickup_location')}: {pickupSummary(active.pickup) || '—'}
+                    </Text>
+                    <Text style={styles.historyLine} numberOfLines={1}>
+                      {i18n.t('destination')}:{' '}
+                      {active.destination?.pending
+                        ? i18n.t('no_destination_selected')
+                        : destinationSummary(active.destination) || '—'}
+                    </Text>
+                    {activeInRoute ? (
+                      <TouchableOpacity
+                        style={styles.trackBtn}
+                        onPress={() => navigation.navigate('TripTracking', { orderId: active.id })}
+                        activeOpacity={0.85}
+                        accessibilityRole="button"
+                        accessibilityLabel={i18n.t('dashboard_in_route_banner_title')}
+                      >
+                        <Ionicons name="navigate" size={20} color={colors.white} />
+                        <Text style={styles.trackBtnText}>{i18n.t('dashboard_in_route_banner_title')}</Text>
+                        <Ionicons name="chevron-forward" size={20} color={colors.white} />
+                      </TouchableOpacity>
+                    ) : null}
+                  </View>
+                </>
+              ) : null}
+
+              <Text style={styles.sectionLabel}>{i18n.t('dashboard_history_section')}</Text>
+              {history.length === 0 ? (
+                !active ? (
+                  <View style={styles.emptyWrap}>
+                    <Ionicons name="receipt-outline" size={48} color={colors.border} />
+                    <Text style={styles.emptyHint}>{i18n.t('dashboard_no_history')}</Text>
+                  </View>
+                ) : (
+                  <Text style={styles.mutedHistoryEmpty}>{i18n.t('activity_no_past_trips')}</Text>
+                )
+              ) : (
+                history.map(renderHistoryRow)
+              )}
+            </>
           )}
         </ScrollView>
       </SafeAreaView>
@@ -247,5 +296,37 @@ const styles = StyleSheet.create({
     fontSize: ios.fontSize.caption,
     fontWeight: ios.fontWeight.semibold,
     color: colors.primaryDark,
+  },
+  activeCard: {
+    backgroundColor: colors.surface,
+    borderRadius: ios.radius.md,
+    padding: ios.spacing.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.primary,
+    marginBottom: ios.spacing.lg,
+  },
+  trackBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: ios.spacing.sm,
+    marginTop: ios.spacing.md,
+    paddingVertical: ios.spacing.sm,
+    paddingHorizontal: ios.spacing.md,
+    backgroundColor: colors.primary,
+    borderRadius: ios.radius.md,
+  },
+  trackBtnText: {
+    flex: 1,
+    fontSize: ios.fontSize.subhead,
+    fontWeight: ios.fontWeight.semibold,
+    color: colors.white,
+    textAlign: 'center',
+  },
+  mutedHistoryEmpty: {
+    fontSize: ios.fontSize.footnote,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    paddingVertical: ios.spacing.md,
   },
 });

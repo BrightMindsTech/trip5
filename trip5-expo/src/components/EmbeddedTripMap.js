@@ -19,6 +19,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import i18n from '../i18n';
 import { Config } from '../config';
 import { colors, ios } from '../theme';
+import { fetchDirectionsCoordinates } from '../utils/mapsDirections';
 
 const JORDAN_CENTER = { latitude: 32.5565, longitude: 35.8467 };
 const INITIAL_DELTA = { latitudeDelta: 0.28, longitudeDelta: 0.28 };
@@ -128,39 +129,6 @@ function formatKm(km) {
   if (km == null || Number.isNaN(km)) return null;
   if (km < 1) return `${Math.round(km * 1000)} m`;
   return `${km.toFixed(1)} km`;
-}
-
-/** Decodes Google Directions `overview_polyline` into `{ latitude, longitude }[]`. */
-function decodeGooglePolyline(encoded) {
-  if (!encoded || typeof encoded !== 'string') return [];
-  const coords = [];
-  let index = 0;
-  const len = encoded.length;
-  let lat = 0;
-  let lng = 0;
-  while (index < len) {
-    let b;
-    let shift = 0;
-    let result = 0;
-    do {
-      b = encoded.charCodeAt(index++) - 63;
-      result |= (b & 0x1f) << shift;
-      shift += 5;
-    } while (b >= 0x20);
-    const dlat = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
-    lat += dlat;
-    shift = 0;
-    result = 0;
-    do {
-      b = encoded.charCodeAt(index++) - 63;
-      result |= (b & 0x1f) << shift;
-      shift += 5;
-    } while (b >= 0x20);
-    const dlng = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
-    lng += dlng;
-    coords.push({ latitude: lat / 1e5, longitude: lng / 1e5 });
-  }
-  return coords;
 }
 
 function MapOverlays({
@@ -360,29 +328,15 @@ export default function EmbeddedTripMap({
     setRouteLegMetrics(null);
     (async () => {
       try {
-        const origin = `${p.latitude},${p.longitude}`;
-        const dest = `${d.latitude},${d.longitude}`;
-        const url =
-          `https://maps.googleapis.com/maps/api/directions/json?` +
-          `origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(dest)}` +
-          `&mode=driving&region=jo&key=${encodeURIComponent(apiKey)}`;
-        const res = await fetch(url);
-        const data = await res.json();
+        const result = await fetchDirectionsCoordinates(
+          { latitude: p.latitude, longitude: p.longitude },
+          { latitude: d.latitude, longitude: d.longitude },
+          { apiKey }
+        );
         if (reqId !== directionsReqId.current) return;
-        if (data.status !== 'OK' || !data.routes?.[0]?.overview_polyline?.points) {
-          return;
-        }
-        const decoded = decodeGooglePolyline(data.routes[0].overview_polyline.points);
-        if (decoded.length < 2) return;
-        if (reqId !== directionsReqId.current) return;
-        setRoutePathCoords(decoded);
-        const leg = data.routes[0].legs?.[0];
-        if (leg?.distance?.value != null && leg?.duration?.value != null) {
-          setRouteLegMetrics({
-            km: leg.distance.value / 1000,
-            minutes: Math.round(leg.duration.value / 60),
-          });
-        }
+        if (!result) return;
+        setRoutePathCoords(result.coordinates);
+        setRouteLegMetrics(result.legMetrics);
       } catch {
         if (reqId !== directionsReqId.current) return;
         setRoutePathCoords(null);
