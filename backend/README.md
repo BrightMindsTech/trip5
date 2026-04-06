@@ -1,4 +1,6 @@
-# Trip5 Backend
+# Trip5 Backend (optional legacy)
+
+The app **prefers [Supabase Edge Functions](../supabase/README.md)** when `EXPO_PUBLIC_SUPABASE_URL` + anon key are set in the Expo app. This folder is a **Node/Express** mirror you can still run on **Render** or **Vercel** for the same routes (`/api/orders`, `/api/driver-orders`).
 
 API that receives **authenticated** orders from the Trip5 app and **stores them in Supabase Postgres** (WhatsApp removed). Runs as a **Render Web Service** (`server.js`).
 
@@ -31,4 +33,14 @@ API that receives **authenticated** orders from the Trip5 app and **stores them 
 
 ## Orders
 
-Rows are stored in `public.orders` with `status` default `pending`. Driver-facing APIs can be added later.
+Rows are stored in `public.orders` with `status` default `pending`.
+
+## Drivers
+
+Run migration `003_driver_section.sql` (adds `profiles.is_driver`, `orders.driver_id`). Enable a user as a driver in SQL:
+
+`update public.profiles set is_driver = true where id = '<user uuid>';`
+
+- `GET /api/driver-orders` — Bearer token; lists **available** (`pending`, no driver) and **mine** (assigned to this driver, non-terminal).
+- `POST /api/driver-orders` — JSON `{ "orderId", "action": "set_status", "status": "driver_en_route" }` (trip progression), or `{ "action": "respond_offer", "offerId", "accept": true|false }` for timed incoming offers.
+- Run migration `004_order_driver_offers.sql`. New passenger orders enqueue a **10s offer** to the first available driver (by `profiles.id`); if it expires or is declined, the next driver is offered. The driver app polls `GET /api/driver-orders` and shows the offer in-app.

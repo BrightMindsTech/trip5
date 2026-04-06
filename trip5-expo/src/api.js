@@ -1,14 +1,41 @@
 import { Config } from './config';
 
+/** Prefer Supabase Edge Functions when project URL + anon key are configured. */
+function useEdgeFunctions() {
+  return Boolean(Config.edgeFunctionsBaseURL && Config.supabaseAnonKey);
+}
+
+function serviceHeaders(accessToken, withJsonBody) {
+  const h = {
+    ...(withJsonBody ? { 'Content-Type': 'application/json' } : {}),
+    ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
+  };
+  if (useEdgeFunctions()) {
+    h.apikey = Config.supabaseAnonKey;
+  }
+  return h;
+}
+
+function ordersUrl() {
+  return useEdgeFunctions() ? `${Config.edgeFunctionsBaseURL}/orders` : `${Config.apiBaseURL}/api/orders`;
+}
+
+function driverOrdersUrl() {
+  return useEdgeFunctions()
+    ? `${Config.edgeFunctionsBaseURL}/driver-orders`
+    : `${Config.apiBaseURL}/api/driver-orders`;
+}
+
+function apiHintBase() {
+  return useEdgeFunctions() ? Config.edgeFunctionsBaseURL : Config.apiBaseURL;
+}
+
 export async function submitOrder(order, accessToken) {
-  const url = `${Config.apiBaseURL}/api/orders`;
+  const url = ordersUrl();
   try {
     const response = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      },
+      headers: serviceHeaders(accessToken, true),
       body: JSON.stringify(order),
     });
     const data = await response.json().catch(() => ({}));
@@ -17,7 +44,9 @@ export async function submitOrder(order, accessToken) {
         response.status === 401
           ? data.error || 'Please sign in again.'
           : response.status === 404
-            ? `Server error (404). Set EXPO_PUBLIC_API_BASE_URL in .env to your API URL.`
+            ? useEdgeFunctions()
+              ? `Not found (404). Deploy Edge Functions: orders — ${Config.edgeFunctionsBaseURL}/orders`
+              : `Server error (404). Set EXPO_PUBLIC_API_BASE_URL in .env to your API URL.`
             : data.error || data.message || `Server error (${response.status})`;
       throw new Error(msg);
     }
@@ -29,16 +58,47 @@ export async function submitOrder(order, accessToken) {
         msg === 'Network request failed' ||
         (err.name === 'TypeError' && (msg.includes('fetch') || msg.includes('Network')))
       ) {
-        const base = Config.apiBaseURL;
-        const isPlaceholder =
-          !base || base.includes('your-vercel-url') || base.includes('your-project');
-        const hint = isPlaceholder
-          ? 'Set EXPO_PUBLIC_API_BASE_URL in trip5-expo/.env to your Render backend URL.'
-          : 'Check device internet and that the backend is reachable.';
+        const base = apiHintBase();
+        const hint = useEdgeFunctions()
+          ? 'Check EXPO_PUBLIC_SUPABASE_URL, deploy supabase functions, and device network.'
+          : !base || base.includes('your-vercel-url') || base.includes('your-project')
+            ? 'Set EXPO_PUBLIC_API_BASE_URL in trip5-expo/.env to your backend URL.'
+            : 'Check device internet and that the backend is reachable.';
         throw new Error('Network request failed.\n\n' + hint + '\n\nCurrent: ' + base);
       }
       throw err;
     }
     throw err;
   }
+}
+
+export async function getDriverOrders(accessToken) {
+  const url = driverOrdersUrl();
+  const response = await fetch(url, {
+    headers: serviceHeaders(accessToken, false),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const msg =
+      response.status === 401
+        ? data.error || 'Please sign in again.'
+        : data.error || data.message || `Server error (${response.status})`;
+    throw new Error(msg);
+  }
+  return data;
+}
+
+export async function postDriverOrderAction(accessToken, body) {
+  const url = driverOrdersUrl();
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: serviceHeaders(accessToken, true),
+    body: JSON.stringify(body),
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const msg = data.error || data.message || `Server error (${response.status})`;
+    throw new Error(msg);
+  }
+  return data;
 }

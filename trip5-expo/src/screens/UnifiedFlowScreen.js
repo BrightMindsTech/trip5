@@ -53,10 +53,13 @@ export default function UnifiedFlowScreen({
   onExitAfterSuccess,
   exitAfterSuccessLabel,
   initialOpenAirportModal = false,
+  initialStopsMode = 'pickup',
 }) {
   const isArabic = i18n.locale === 'ar';
   const { profile } = useAuth();
-  const [mapMode, setMapMode] = useState('pickup');
+  const [mapMode, setMapMode] = useState(() =>
+    initialStopsMode === 'destination' ? 'destination' : 'pickup'
+  );
   const [isSaving, setIsSaving] = useState(false);
   const [contentOpacity] = useState(() => new Animated.Value(1));
   const [contentScale] = useState(() => new Animated.Value(1));

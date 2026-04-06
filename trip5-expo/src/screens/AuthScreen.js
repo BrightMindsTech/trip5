@@ -24,7 +24,7 @@ import { TERMS_AND_PRIVACY_TEXT } from '../legal/termsPrivacyText';
 import LanguageToggle from '../components/LanguageToggle';
 import { isValidJordanPhone } from '../utils/phoneAuth';
 
-export default function AuthScreen() {
+export default function AuthScreen({ onPressDriver }) {
   const { signIn, signUp } = useAuth();
   const [mode, setMode] = useState('signIn');
   const [password, setPassword] = useState('');
@@ -179,6 +179,20 @@ export default function AuthScreen() {
                 </Text>
               </TouchableOpacity>
             </View>
+
+            {typeof onPressDriver === 'function' ? (
+              <TouchableOpacity
+                style={styles.driverEntry}
+                onPress={onPressDriver}
+                disabled={busy}
+                accessibilityRole="button"
+                accessibilityLabel={i18n.t('auth_im_a_driver')}
+              >
+                <Ionicons name="car-outline" size={18} color={colors.primaryDark} />
+                <Text style={styles.driverEntryText}>{i18n.t('auth_im_a_driver')}</Text>
+                <Ionicons name="chevron-forward" size={16} color={colors.placeholder} style={styles.driverEntryChevron} />
+              </TouchableOpacity>
+            ) : null}
 
             <Text style={styles.legal}>
               {i18n.t('auth_legal_prefix')}
@@ -357,6 +371,28 @@ const styles = StyleSheet.create({
     fontWeight: ios.fontWeight.bold,
     color: colors.primaryDark,
   },
+  driverEntry: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    alignSelf: 'center',
+    marginTop: ios.spacing.md,
+    marginBottom: ios.spacing.sm,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    backgroundColor: colors.surface,
+    borderRadius: ios.radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+  },
+  driverEntryText: {
+    marginLeft: 8,
+    marginRight: 4,
+    fontSize: ios.fontSize.subhead,
+    fontWeight: ios.fontWeight.semibold,
+    color: colors.primaryDark,
+  },
+  driverEntryChevron: { marginLeft: 2 },
   legal: {
     fontSize: ios.fontSize.caption,
     color: colors.placeholder,

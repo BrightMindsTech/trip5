@@ -17,7 +17,7 @@ import UnifiedFlowScreen from './UnifiedFlowScreen';
 export default function BookingFlowScreen({ navigation }) {
   const route = useRoute();
   const appliedHomeParams = useRef(false);
-  const appliedInitialPickup = useRef(false);
+  const appliedInitialDestination = useRef(false);
   const { signOut } = useAuth();
   const {
     order,
@@ -69,24 +69,25 @@ export default function BookingFlowScreen({ navigation }) {
 
   useEffect(() => {
     if (currentStep !== 2) return;
-    const p = route.params?.initialPickup;
-    if (!p || typeof p.latitude !== 'number' || typeof p.longitude !== 'number') return;
-    if (appliedInitialPickup.current) return;
+    const d = route.params?.initialDestination;
+    if (!d || typeof d.latitude !== 'number' || typeof d.longitude !== 'number') return;
+    if (appliedInitialDestination.current) return;
     updateOrder({
-      pickup: {
-        latitude: p.latitude,
-        longitude: p.longitude,
-        address: p.address || '',
+      skipDestination: false,
+      destination: {
+        latitude: d.latitude,
+        longitude: d.longitude,
+        address: d.address || '',
       },
     });
-    appliedInitialPickup.current = true;
-  }, [currentStep, route.params?.initialPickup, updateOrder]);
+    appliedInitialDestination.current = true;
+  }, [currentStep, route.params?.initialDestination, updateOrder]);
 
   useFocusEffect(
     useCallback(() => {
       return () => {
         appliedHomeParams.current = false;
-        appliedInitialPickup.current = false;
+        appliedInitialDestination.current = false;
         resetOrder();
       };
     }, [resetOrder])
@@ -204,6 +205,7 @@ export default function BookingFlowScreen({ navigation }) {
       onExitAfterSuccess={() => navigation.goBack()}
       exitAfterSuccessLabel={i18n.t('dashboard_back_home')}
       initialOpenAirportModal={initialOpenAirportModal}
+      initialStopsMode={route.params?.initialDestination ? 'destination' : 'pickup'}
     />
   );
 

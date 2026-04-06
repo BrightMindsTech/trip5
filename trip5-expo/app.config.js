@@ -8,6 +8,7 @@ const apiBaseURL = process.env.EXPO_PUBLIC_API_BASE_URL || "https://trip5-api.ve
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || "";
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "";
 const authEmailDomain = process.env.EXPO_PUBLIC_AUTH_EMAIL_DOMAIN || "phone.trip5.app";
+const driverRegistrationPhone = process.env.EXPO_PUBLIC_DRIVER_CONTACT_PHONE || "+962772182987";
 
 export default {
   expo: {
@@ -18,6 +19,7 @@ export default {
       supabaseUrl,
       supabaseAnonKey,
       authEmailDomain,
+      driverRegistrationPhone,
     },
     slug: "trip5-expo",
     scheme: "trip5",

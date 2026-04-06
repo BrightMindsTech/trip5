@@ -187,7 +187,7 @@ export default function SavedPlacesScreen({ navigation }) {
     (row) => {
       navigation.navigate('Booking', {
         presetRoute: 'amman_to_irbid',
-        initialPickup: {
+        initialDestination: {
           latitude: row.latitude,
           longitude: row.longitude,
           address: row.address || '',

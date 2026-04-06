@@ -22,22 +22,56 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
   const [profileLoading, setProfileLoading] = useState(false);
 
-  const loadProfile = useCallback(async (userId) => {
+  const loadProfile = useCallback(async (userId, options = {}) => {
+    const silent = options.silent === true;
     if (!userId) {
       setProfile(null);
       return;
     }
-    setProfileLoading(true);
+    if (!silent) setProfileLoading(true);
     try {
-      const { data, error } = await supabase.from('profiles').select('full_name, phone').eq('id', userId).maybeSingle();
+      let { data, error } = await supabase
+        .from('profiles')
+        .select('full_name, phone, is_driver, driver_score, driver_subscription_valid_until')
+        .eq('id', userId)
+        .maybeSingle();
+
+      if (error) {
+        const retry = await supabase.from('profiles').select('full_name, phone, is_driver').eq('id', userId).maybeSingle();
+        if (!retry.error) {
+          data = { ...retry.data, driver_score: null, driver_subscription_valid_until: null };
+          error = null;
+        } else {
+          const retry2 = await supabase.from('profiles').select('full_name, phone').eq('id', userId).maybeSingle();
+          if (!retry2.error) {
+            data = { ...retry2.data, is_driver: false, driver_score: null, driver_subscription_valid_until: null };
+            error = null;
+          } else {
+            error = retry2.error;
+          }
+        }
+      }
+
       if (error) {
         console.warn('Profile load:', error.message);
-        setProfile({ full_name: '', phone: '' });
+        setProfile({ full_name: '', phone: '', is_driver: false, driver_score: null, driver_subscription_valid_until: null });
         return;
       }
-      setProfile(data || { full_name: '', phone: '' });
+      const row = data || {
+        full_name: '',
+        phone: '',
+        is_driver: false,
+        driver_score: null,
+        driver_subscription_valid_until: null,
+      };
+      setProfile({
+        ...row,
+        is_driver: row.is_driver === true,
+        driver_score: row.driver_score != null ? Number(row.driver_score) : null,
+        driver_subscription_valid_until: row.driver_subscription_valid_until ?? null,
+      });
     } finally {
-      setProfileLoading(false);
+      if (!silent) setProfileLoading(false);
     }
   }, []);
 
@@ -95,12 +129,16 @@ export function AuthProvider({ children }) {
   const updateProfile = useCallback(async (updates) => {
     const { data: u } = await supabase.auth.getUser();
     if (!u.user) throw new Error('Not signed in');
-    const { error } = await supabase.from('profiles').upsert({
-      id: u.user.id,
-      full_name: updates.full_name,
-      phone: updates.phone,
-      updated_at: new Date().toISOString(),
-    });
+    // Upsert so a missing profiles row (trigger failure, etc.) is created; on conflict only these columns change, so is_driver is preserved.
+    const { error } = await supabase.from('profiles').upsert(
+      {
+        id: u.user.id,
+        full_name: updates.full_name,
+        phone: updates.phone,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' }
+    );
     if (error) throw error;
     await loadProfile(u.user.id);
   }, [loadProfile]);
@@ -122,6 +160,7 @@ export function AuthProvider({ children }) {
     updateProfile,
     loadProfile,
     needsProfile,
+    isDriver: profile?.is_driver === true,
     accessToken: session?.access_token ?? null,
   };
 

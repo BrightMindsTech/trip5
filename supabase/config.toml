@@ -1,0 +1,11 @@
+# Supabase CLI — run: supabase link --project-ref <ref>
+# Deploy functions: supabase functions deploy orders && supabase functions deploy driver-orders
+
+[api]
+enabled = true
+
+[functions.orders]
+verify_jwt = true
+
+[functions.driver-orders]
+verify_jwt = true

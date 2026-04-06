@@ -541,10 +541,9 @@ export default function EmbeddedTripMap({
     }
   };
 
-  const fetchMyLocation = async () => {
-    if (skipDestination && activeMode === 'destination') {
-      setActiveMode('pickup');
-    }
+  /** Sets pickup from device GPS; use the map FAB for destination when that tab is active. */
+  const applyPickupFromDevice = async () => {
+    setActiveMode('pickup');
     setLoadingLocation(true);
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -558,8 +557,7 @@ export default function EmbeddedTripMap({
         return;
       }
       const { latitude, longitude, jordanVerifiedOffBBox } = resolved;
-      const mode = skipDestination || activeMode === 'pickup' ? 'pickup' : 'destination';
-      await applyCoord(latitude, longitude, mode, { jordanVerifiedOffBBox });
+      await applyCoord(latitude, longitude, 'pickup', { jordanVerifiedOffBBox });
     } catch {
       Alert.alert('', i18n.t('error_select_location'));
     } finally {
@@ -567,48 +565,29 @@ export default function EmbeddedTripMap({
     }
   };
 
-  /**
-   * Once on mount: if pickup has no coords yet, center on GPS then fill address.
-   * Runs with [] deps so updating pickup mid-flow does not abort geocoding (see orderPickRef).
-   */
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        if (orderPickRef.current?.latitude != null && orderPickRef.current?.longitude != null) {
-          return;
-        }
-        const { status } = await Location.requestForegroundPermissionsAsync();
-        if (status !== 'granted' || cancelled) return;
-        if (orderPickRef.current?.latitude != null) return;
-        const resolved = await getJordanCoordinatesFromDevice();
-        if (cancelled || !resolved) return;
-        const { latitude, longitude } = resolved;
-        if (cancelled || orderPickRef.current?.latitude != null) return;
-        updateOrder({ pickup: { latitude, longitude, address: '' } });
-        requestAnimationFrame(() => {
-          if (cancelled) return;
-          mapRef.current?.animateToRegion({ latitude, longitude, ...MAP_DELTA_LOOSE }, 320);
-        });
-        const address = await reverseGeocode(latitude, longitude);
-        if (cancelled) return;
-        const cur = orderPickRef.current;
-        if (
-          cur?.latitude != null &&
-          (Math.abs(cur.latitude - latitude) > 0.0002 || Math.abs(cur.longitude - longitude) > 0.0002)
-        ) {
-          return;
-        }
-        updateOrder({ pickup: { latitude, longitude, address } });
-      } catch {
-        /* permission denied or unavailable — user can use locate button or map */
+  const fetchDestinationLocation = async () => {
+    if (skipDestination) return;
+    setActiveMode('destination');
+    setLoadingLocation(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('', i18n.t('error_select_location'));
+        return;
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentional: avoid re-running when pickup updates mid-flow
-  }, []);
+      const resolved = await getJordanCoordinatesFromDevice();
+      if (!resolved) {
+        alertLocationOutsideJordan();
+        return;
+      }
+      const { latitude, longitude, jordanVerifiedOffBBox } = resolved;
+      await applyCoord(latitude, longitude, 'destination', { jordanVerifiedOffBBox });
+    } catch {
+      Alert.alert('', i18n.t('error_select_location'));
+    } finally {
+      setLoadingLocation(false);
+    }
+  };
 
   const hasPlacesKey = Config.googleMapsApiKey && Config.googleMapsApiKey.length > 0;
 
@@ -675,18 +654,21 @@ export default function EmbeddedTripMap({
           />
         </MapView>
 
-        <TouchableOpacity
-          style={[styles.fabMyLocation, { bottom: fabBottom }]}
-          onPress={fetchMyLocation}
-          disabled={loadingLocation}
-          activeOpacity={0.85}
-        >
-          {loadingLocation ? (
-            <ActivityIndicator color={colors.primary} />
-          ) : (
-            <Ionicons name="navigate" size={22} color={colors.text} />
-          )}
-        </TouchableOpacity>
+        {!skipDestination && activeMode === 'destination' ? (
+          <TouchableOpacity
+            style={[styles.fabMyLocation, { bottom: fabBottom }]}
+            onPress={fetchDestinationLocation}
+            disabled={loadingLocation}
+            activeOpacity={0.85}
+            accessibilityLabel={i18n.t('use_my_location')}
+          >
+            {loadingLocation ? (
+              <ActivityIndicator color={colors.primary} />
+            ) : (
+              <Ionicons name="navigate" size={22} color={colors.text} />
+            )}
+          </TouchableOpacity>
+        ) : null}
 
         <View style={styles.bottomSheet} onLayout={onSheetLayout} pointerEvents="box-none">
           <View
@@ -717,6 +699,26 @@ export default function EmbeddedTripMap({
                 </Text>
               </Pressable>
             </View>
+
+            <Pressable
+              style={({ pressed }) => [
+                styles.pickupGpsBtn,
+                pressed && styles.pickupGpsBtnPressed,
+                loadingLocation && styles.pickupGpsBtnDisabled,
+              ]}
+              onPress={applyPickupFromDevice}
+              disabled={loadingLocation}
+              accessibilityRole="button"
+              accessibilityLabel={`${i18n.t('use_my_location')}: ${i18n.t('pickup_location')}`}
+            >
+              {loadingLocation ? (
+                <ActivityIndicator size="small" color={colors.primary} />
+              ) : (
+                <Ionicons name="navigate" size={18} color={colors.primary} />
+              )}
+              <Text style={styles.pickupGpsBtnText}>{i18n.t('use_my_location')}</Text>
+              <Text style={styles.pickupGpsBtnHint}>{i18n.t('pickup_location')}</Text>
+            </Pressable>
 
             <View style={styles.searchJordanRow}>
               <Ionicons name="search" size={18} color={colors.primary} />
@@ -1010,7 +1012,34 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     paddingHorizontal: 4,
   },
-  modeTabs: { flexDirection: 'row', marginBottom: 10 },
+  modeTabs: { flexDirection: 'row', marginBottom: 8 },
+  pickupGpsBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    alignSelf: 'stretch',
+    gap: 8,
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+    borderRadius: 12,
+    backgroundColor: colors.background,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  pickupGpsBtnPressed: { opacity: 0.88 },
+  pickupGpsBtnDisabled: { opacity: 0.65 },
+  pickupGpsBtnText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.text,
+  },
+  pickupGpsBtnHint: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.textSecondary,
+    maxWidth: '42%',
+  },
   tab: {
     flex: 1,
     flexDirection: 'row',

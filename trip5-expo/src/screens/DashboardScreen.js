@@ -468,7 +468,7 @@ export default function DashboardScreen({ navigation }) {
                 onPress={() =>
                   goBooking({
                     presetRoute: 'amman_to_irbid',
-                    initialPickup: {
+                    initialDestination: {
                       latitude: place.latitude,
                       longitude: place.longitude,
                       address: place.address || '',

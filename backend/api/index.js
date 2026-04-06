@@ -4,6 +4,6 @@ export default async function handler(req, res) {
   res.status(200).json({
     ok: true,
     service: 'trip5-backend',
-    message: 'Use POST /api/orders to submit an order.',
+    message: 'POST /api/orders (passengers). GET/POST /api/driver-orders (drivers, requires profile.is_driver).',
   });
 }

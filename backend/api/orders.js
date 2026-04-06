@@ -4,6 +4,7 @@
  */
 
 import { getSupabaseAdmin } from '../lib/supabase.js';
+import { assignNextDriver } from '../lib/driverDispatch.js';
 
 function validateBody(body) {
   const { route, date, service, pickup, destination, skip_destination } = body;
@@ -129,6 +130,12 @@ export default async function handler(req, res) {
   if (insertErr) {
     console.error('Insert order:', insertErr);
     return res.status(500).json({ error: 'Failed to save order' });
+  }
+
+  try {
+    await assignNextDriver(supabase, inserted.id);
+  } catch (e) {
+    console.error('assignNextDriver after order:', e);
   }
 
   return res.status(200).json({

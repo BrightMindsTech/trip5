@@ -35,7 +35,7 @@ export default function AccountScreen() {
 
   const refreshLocale = useCallback(() => {
     setLocaleState(i18n.locale);
-    bumpTabs();
+    bumpTabs?.();
   }, [bumpTabs]);
 
   const header = (
