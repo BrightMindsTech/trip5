@@ -3,7 +3,7 @@ import { Pressable, Text, StyleSheet } from 'react-native';
 import i18n, { setLanguage } from '../i18n';
 import { colors, ios } from '../theme';
 
-export default function LanguageToggle({ onToggle }) {
+export default function LanguageToggle({ onToggle, textStyle, buttonStyle }) {
   const isArabic = i18n.locale === 'ar';
   const toggle = async () => {
     const next = isArabic ? 'en' : 'ar';
@@ -13,10 +13,10 @@ export default function LanguageToggle({ onToggle }) {
   return (
     <Pressable
       onPress={toggle}
-      style={({ pressed }) => [styles.btn, pressed && styles.btnPressed]}
+      style={({ pressed }) => [styles.btn, buttonStyle, pressed && styles.btnPressed]}
       hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
     >
-      <Text style={styles.text}>{isArabic ? 'English' : 'العربية'}</Text>
+      <Text style={[styles.text, textStyle]}>{isArabic ? 'English' : 'العربية'}</Text>
     </Pressable>
   );
 }

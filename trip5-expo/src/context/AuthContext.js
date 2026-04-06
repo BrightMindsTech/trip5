@@ -1,5 +1,10 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
+import {
+  normalizeJordanPhoneToDigits,
+  phoneToSyntheticEmail,
+  formatJordanPhoneDisplay,
+} from '../utils/phoneAuth';
 
 const AuthContext = createContext(null);
 
@@ -54,20 +59,27 @@ export function AuthProvider({ children }) {
     return () => subscription.unsubscribe();
   }, [loadProfile]);
 
-  const signIn = useCallback(async (email, password) => {
-    const { data, error } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
+  const signIn = useCallback(async (phone, password) => {
+    const digits = normalizeJordanPhoneToDigits(phone);
+    const email = phoneToSyntheticEmail(digits);
+    if (!email) throw new Error('Invalid phone');
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
     return data;
   }, []);
 
-  const signUp = useCallback(async (email, password, fullName, phone) => {
+  const signUp = useCallback(async (phone, password, fullName) => {
+    const digits = normalizeJordanPhoneToDigits(phone);
+    const email = phoneToSyntheticEmail(digits);
+    if (!email) throw new Error('Invalid phone');
+    const displayPhone = formatJordanPhoneDisplay(digits);
     const { data, error } = await supabase.auth.signUp({
-      email: email.trim(),
+      email,
       password,
       options: {
         data: {
           full_name: fullName.trim(),
-          phone: phone.trim(),
+          phone: displayPhone,
         },
       },
     });

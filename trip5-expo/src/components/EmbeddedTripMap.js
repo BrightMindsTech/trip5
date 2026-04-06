@@ -19,9 +19,22 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import i18n from '../i18n';
 import { Config } from '../config';
 import { colors, ios } from '../theme';
+import { fetchDirectionsCoordinates } from '../utils/mapsDirections';
 
 const JORDAN_CENTER = { latitude: 32.5565, longitude: 35.8467 };
 const INITIAL_DELTA = { latitudeDelta: 0.28, longitudeDelta: 0.28 };
+
+/** Space below label so anchor stays at map point while label sits above the pin (pin ≈22px + gap). */
+const LABEL_ABOVE_PIN_PADDING = 26;
+
+/** Overview when focusing a point without a resolved address yet (e.g. first GPS). */
+const MAP_DELTA_LOOSE = { latitudeDelta: 0.06, longitudeDelta: 0.06 };
+/** Street-level zoom after choosing a place, tapping the map, or dropping a pin (smaller delta = more zoom). */
+const MAP_DELTA_SELECTED = { latitudeDelta: 0.009, longitudeDelta: 0.009 };
+
+function mapDeltaForAddress(address) {
+  return typeof address === 'string' && address.trim().length > 0 ? MAP_DELTA_SELECTED : MAP_DELTA_LOOSE;
+}
 
 /** Approximate geographic bounds for Jordan (validation + search bias). */
 const JORDAN_BOUNDS = {
@@ -31,6 +44,16 @@ const JORDAN_BOUNDS = {
   maxLng: 39.35,
 };
 
+function alertLocationOutsideJordan() {
+  const base = i18n.t('error_location_outside_jordan');
+  if (__DEV__) {
+    const hint = i18n.t('error_location_outside_jordan_dev_hint');
+    Alert.alert('', `${base}\n\n${hint}`);
+  } else {
+    Alert.alert('', base);
+  }
+}
+
 function isInJordan(lat, lng) {
   if (lat == null || lng == null || Number.isNaN(lat) || Number.isNaN(lng)) return false;
   return (
@@ -39,6 +62,50 @@ function isInJordan(lat, lng) {
     lng >= JORDAN_BOUNDS.minLng &&
     lng <= JORDAN_BOUNDS.maxLng
   );
+}
+
+/** Expo reverse-geocode may localize country name (e.g. Arabic) so we check ISO + substrings. */
+function addressIndicatesJordan(addr) {
+  if (!addr) return false;
+  if ((addr.isoCountryCode || '').toUpperCase() === 'JO') return true;
+  const parts = [addr.country, addr.region, addr.subregion, addr.district, addr.name];
+  for (const p of parts) {
+    if (!p || typeof p !== 'string') continue;
+    const lower = p.toLowerCase();
+    if (lower.includes('jordan')) return true;
+    if (/أردن|اردن|الأردن/.test(p)) return true;
+  }
+  return false;
+}
+
+/**
+ * Resolves device GPS to coordinates acceptable for Trip5 (bbox or platform geocoder says Jordan).
+ * Uses high accuracy and a second fix if needed — empty getCurrentPositionAsync options often return
+ * coarse/stale locations that fall outside the bbox while the user is still in Jordan.
+ */
+async function getJordanCoordinatesFromDevice() {
+  let loc = await Location.getCurrentPositionAsync({
+    accuracy: Location.Accuracy.High,
+  });
+  let { latitude, longitude } = loc.coords;
+  if (!isInJordan(latitude, longitude)) {
+    loc = await Location.getCurrentPositionAsync({
+      accuracy: Location.Accuracy.Highest,
+    });
+    ({ latitude, longitude } = loc.coords);
+  }
+  if (isInJordan(latitude, longitude)) {
+    return { latitude, longitude, jordanVerifiedOffBBox: false };
+  }
+  try {
+    const [addr] = await Location.reverseGeocodeAsync({ latitude, longitude });
+    if (addressIndicatesJordan(addr)) {
+      return { latitude, longitude, jordanVerifiedOffBBox: true };
+    }
+  } catch {
+    /* offline or geocoder error */
+  }
+  return null;
 }
 
 function haversineKm(lat1, lon1, lat2, lon2) {
@@ -64,52 +131,33 @@ function formatKm(km) {
   return `${km.toFixed(1)} km`;
 }
 
-/** Decodes Google Directions `overview_polyline` into `{ latitude, longitude }[]`. */
-function decodeGooglePolyline(encoded) {
-  if (!encoded || typeof encoded !== 'string') return [];
-  const coords = [];
-  let index = 0;
-  const len = encoded.length;
-  let lat = 0;
-  let lng = 0;
-  while (index < len) {
-    let b;
-    let shift = 0;
-    let result = 0;
-    do {
-      b = encoded.charCodeAt(index++) - 63;
-      result |= (b & 0x1f) << shift;
-      shift += 5;
-    } while (b >= 0x20);
-    const dlat = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
-    lat += dlat;
-    shift = 0;
-    result = 0;
-    do {
-      b = encoded.charCodeAt(index++) - 63;
-      result |= (b & 0x1f) << shift;
-      shift += 5;
-    } while (b >= 0x20);
-    const dlng = (result & 1) !== 0 ? ~(result >> 1) : result >> 1;
-    lng += dlng;
-    coords.push({ latitude: lat / 1e5, longitude: lng / 1e5 });
-  }
-  return coords;
-}
+function MapOverlays({
+  order,
+  lineCoords,
+  skipDestination,
+  pickupDraggable,
+  destinationDraggable,
+  onPickupDragEnd,
+  onDestinationDragEnd,
+}) {
+  const pickupCoord =
+    order.pickup?.latitude != null && order.pickup?.longitude != null
+      ? { latitude: order.pickup.latitude, longitude: order.pickup.longitude }
+      : null;
+  /** Only when a destination is required and coordinates exist (skip clears destination in order). */
+  const destCoord =
+    !skipDestination &&
+    order.destination?.latitude != null &&
+    order.destination?.longitude != null
+      ? { latitude: order.destination.latitude, longitude: order.destination.longitude }
+      : null;
 
-/** Downsample for fitToCoordinates when the polyline has many points. */
-function sampleCoordsForFit(coords, maxPoints) {
-  if (!coords?.length || coords.length <= maxPoints) return coords;
-  const out = [];
-  const n = coords.length;
-  const step = (n - 1) / (maxPoints - 1);
-  for (let i = 0; i < maxPoints; i++) {
-    out.push(coords[Math.min(n - 1, Math.round(i * step))]);
-  }
-  return out;
-}
+  /** Pickup always stacks above destination so the pickup pin stays visible when both exist. */
+  const zDestLabel = 30;
+  const zDestPin = 31;
+  const zPickupLabel = 40;
+  const zPickupPin = 41;
 
-function MapOverlays({ order, lineCoords, skipDestination }) {
   return (
     <>
       {lineCoords && lineCoords.length >= 2 && (
@@ -119,42 +167,77 @@ function MapOverlays({ order, lineCoords, skipDestination }) {
           strokeWidth={4}
           lineCap="round"
           lineJoin="round"
+          zIndex={1}
         />
       )}
-      {order.pickup?.latitude != null && (
-        <Marker
-          coordinate={{ latitude: order.pickup.latitude, longitude: order.pickup.longitude }}
-          anchor={{ x: 0.5, y: 1 }}
-          tracksViewChanges={false}
-        >
-          <View style={styles.markerWrap}>
-            <View style={styles.markerLabelPickup}>
-              <Text style={styles.markerLabelText}>{i18n.t('map_marker_pickup_label')}</Text>
+      {/* Draw destination first, then pickup, so pickup wins tie-breaks; zIndex still orders overlap. */}
+      {destCoord && (
+        <>
+          <Marker
+            coordinate={destCoord}
+            anchor={{ x: 0.5, y: 1 }}
+            tracksViewChanges={false}
+            zIndex={zDestLabel}
+            draggable={false}
+          >
+            <View
+              style={[styles.markerLabelOnlyWrap, { paddingBottom: LABEL_ABOVE_PIN_PADDING }]}
+              collapsable={false}
+            >
+              <View style={styles.markerLabelDrop}>
+                <Text style={styles.markerLabelTextDrop}>{i18n.t('map_marker_dropoff_label')}</Text>
+              </View>
             </View>
-            <View style={styles.markerDotPickup}>
-              <View style={styles.markerDotInner} />
+          </Marker>
+          <Marker
+            coordinate={destCoord}
+            anchor={{ x: 0.5, y: 1 }}
+            tracksViewChanges={!!destinationDraggable}
+            zIndex={zDestPin}
+            draggable={!!destinationDraggable}
+            onDragEnd={destinationDraggable ? onDestinationDragEnd : undefined}
+          >
+            <View style={styles.markerPinHit} collapsable={false}>
+              <View style={styles.markerDotDrop}>
+                <View style={styles.markerDotInner} />
+              </View>
             </View>
-          </View>
-        </Marker>
+          </Marker>
+        </>
       )}
-      {!skipDestination && order.destination?.latitude != null && (
-        <Marker
-          coordinate={{
-            latitude: order.destination.latitude,
-            longitude: order.destination.longitude,
-          }}
-          anchor={{ x: 0.5, y: 1 }}
-          tracksViewChanges={false}
-        >
-          <View style={styles.markerWrap}>
-            <View style={styles.markerLabelDrop}>
-              <Text style={styles.markerLabelTextDrop}>{i18n.t('map_marker_dropoff_label')}</Text>
+      {pickupCoord && (
+        <>
+          <Marker
+            coordinate={pickupCoord}
+            anchor={{ x: 0.5, y: 1 }}
+            tracksViewChanges={false}
+            zIndex={zPickupLabel}
+            draggable={false}
+          >
+            <View
+              style={[styles.markerLabelOnlyWrap, { paddingBottom: LABEL_ABOVE_PIN_PADDING }]}
+              collapsable={false}
+            >
+              <View style={styles.markerLabelPickup}>
+                <Text style={styles.markerLabelText}>{i18n.t('map_marker_pickup_label')}</Text>
+              </View>
             </View>
-            <View style={styles.markerDotDrop}>
-              <View style={styles.markerDotInner} />
+          </Marker>
+          <Marker
+            coordinate={pickupCoord}
+            anchor={{ x: 0.5, y: 1 }}
+            tracksViewChanges={!!pickupDraggable}
+            zIndex={zPickupPin}
+            draggable={!!pickupDraggable}
+            onDragEnd={pickupDraggable ? onPickupDragEnd : undefined}
+          >
+            <View style={styles.markerPinHit} collapsable={false}>
+              <View style={styles.markerDotPickup}>
+                <View style={styles.markerDotInner} />
+              </View>
             </View>
-          </View>
-        </Marker>
+          </Marker>
+        </>
       )}
     </>
   );
@@ -178,8 +261,7 @@ export default function EmbeddedTripMap({
   const sheetHeightRef = useRef(260);
   const directionsReqId = useRef(0);
   const rootRef = useRef(null);
-  const mapRefPickup = useRef(null);
-  const mapRefDestination = useRef(null);
+  const mapRef = useRef(null);
   const placesRef = useRef(null);
   const orderPickRef = useRef(order.pickup);
   const orderDestRef = useRef(order.destination);
@@ -198,6 +280,18 @@ export default function EmbeddedTripMap({
     }),
     [i18n.locale]
   );
+
+  /** Keep search field in sync with the active tab; do not remount autocomplete on tab change (that cleared the field). */
+  const placesSearchDisplayText = useMemo(() => {
+    if (activeMode === 'pickup') {
+      return order.pickup?.address ?? '';
+    }
+    return order.destination?.address ?? '';
+  }, [activeMode, order.pickup?.address, order.destination?.address]);
+
+  useLayoutEffect(() => {
+    placesRef.current?.setAddressText(placesSearchDisplayText);
+  }, [placesSearchDisplayText]);
 
   const lineCoords = useMemo(() => {
     if (skipDestination) return null;
@@ -234,29 +328,15 @@ export default function EmbeddedTripMap({
     setRouteLegMetrics(null);
     (async () => {
       try {
-        const origin = `${p.latitude},${p.longitude}`;
-        const dest = `${d.latitude},${d.longitude}`;
-        const url =
-          `https://maps.googleapis.com/maps/api/directions/json?` +
-          `origin=${encodeURIComponent(origin)}&destination=${encodeURIComponent(dest)}` +
-          `&mode=driving&region=jo&key=${encodeURIComponent(apiKey)}`;
-        const res = await fetch(url);
-        const data = await res.json();
+        const result = await fetchDirectionsCoordinates(
+          { latitude: p.latitude, longitude: p.longitude },
+          { latitude: d.latitude, longitude: d.longitude },
+          { apiKey }
+        );
         if (reqId !== directionsReqId.current) return;
-        if (data.status !== 'OK' || !data.routes?.[0]?.overview_polyline?.points) {
-          return;
-        }
-        const decoded = decodeGooglePolyline(data.routes[0].overview_polyline.points);
-        if (decoded.length < 2) return;
-        if (reqId !== directionsReqId.current) return;
-        setRoutePathCoords(decoded);
-        const leg = data.routes[0].legs?.[0];
-        if (leg?.distance?.value != null && leg?.duration?.value != null) {
-          setRouteLegMetrics({
-            km: leg.distance.value / 1000,
-            minutes: Math.round(leg.duration.value / 60),
-          });
-        }
+        if (!result) return;
+        setRoutePathCoords(result.coordinates);
+        setRouteLegMetrics(result.legMetrics);
       } catch {
         if (reqId !== directionsReqId.current) return;
         setRoutePathCoords(null);
@@ -286,55 +366,46 @@ export default function EmbeddedTripMap({
     return { km, minutes: estimateDriveMinutes(km) };
   }, [order.pickup, order.destination, skipDestination, routeLegMetrics]);
 
+  /**
+   * Center the map on the pin for the active tab. Single MapView so toggling tabs / skip does not remount markers.
+   */
   useEffect(() => {
     const p = order.pickup;
     const d = order.destination;
-    const bottomPad = Math.max(sheetHeightRef.current + 24, 140);
-    const edgePadding = { top: 56, right: 44, bottom: bottomPad, left: 44 };
     const showPickupMap = skipDestination || activeMode === 'pickup';
     const showDestMap = !skipDestination && activeMode === 'destination';
 
-    const both =
-      !skipDestination && p?.latitude != null && d?.latitude != null
-        ? routePathCoords && routePathCoords.length >= 2
-          ? sampleCoordsForFit(routePathCoords, 100)
-          : [
-              { latitude: p.latitude, longitude: p.longitude },
-              { latitude: d.latitude, longitude: d.longitude },
-            ]
-        : null;
-
-    if (both) {
-      if (showPickupMap && mapRefPickup.current) {
-        mapRefPickup.current.fitToCoordinates(both, { edgePadding, animated: true });
+    const focusActivePin = () => {
+      if (showPickupMap && p?.latitude != null) {
+        const delta = mapDeltaForAddress(p.address);
+        mapRef.current?.animateToRegion(
+          { latitude: p.latitude, longitude: p.longitude, ...delta },
+          420
+        );
         return;
       }
-      if (showDestMap && mapRefDestination.current) {
-        mapRefDestination.current.fitToCoordinates(both, { edgePadding, animated: true });
-        return;
+      if (showDestMap && d?.latitude != null) {
+        const delta = mapDeltaForAddress(d.address);
+        mapRef.current?.animateToRegion(
+          { latitude: d.latitude, longitude: d.longitude, ...delta },
+          420
+        );
       }
-    }
+    };
 
-    if (showPickupMap && p?.latitude != null) {
-      mapRefPickup.current?.animateToRegion(
-        { latitude: p.latitude, longitude: p.longitude, latitudeDelta: 0.08, longitudeDelta: 0.08 },
-        420
-      );
-    }
-    if (showDestMap && d?.latitude != null) {
-      mapRefDestination.current?.animateToRegion(
-        { latitude: d.latitude, longitude: d.longitude, latitudeDelta: 0.08, longitudeDelta: 0.08 },
-        420
-      );
-    }
+    const id = requestAnimationFrame(() => {
+      requestAnimationFrame(focusActivePin);
+    });
+    return () => cancelAnimationFrame(id);
   }, [
     order.pickup?.latitude,
     order.pickup?.longitude,
+    order.pickup?.address,
     order.destination?.latitude,
     order.destination?.longitude,
+    order.destination?.address,
     skipDestination,
     activeMode,
-    routePathCoords,
   ]);
 
   const reverseGeocode = async (lat, lng) => {
@@ -353,25 +424,27 @@ export default function EmbeddedTripMap({
     }
   };
 
-  const applyCoord = async (lat, lng, mode) => {
-    if (!isInJordan(lat, lng)) {
-      Alert.alert('', i18n.t('error_location_outside_jordan'));
+  const applyCoord = async (lat, lng, mode, options = {}) => {
+    const inServiceArea =
+      options.jordanVerifiedOffBBox === true || isInJordan(lat, lng);
+    if (!inServiceArea) {
+      alertLocationOutsideJordan();
       return;
     }
     const partial = { latitude: lat, longitude: lng, address: '' };
     if (mode === 'pickup') {
       updateOrder({ pickup: partial });
       requestAnimationFrame(() => {
-        mapRefPickup.current?.animateToRegion(
-          { latitude: lat, longitude: lng, latitudeDelta: 0.06, longitudeDelta: 0.06 },
+        mapRef.current?.animateToRegion(
+          { latitude: lat, longitude: lng, ...MAP_DELTA_SELECTED },
           280
         );
       });
     } else if (!skipDestination) {
       updateOrder({ destination: partial });
       requestAnimationFrame(() => {
-        mapRefDestination.current?.animateToRegion(
-          { latitude: lat, longitude: lng, latitudeDelta: 0.06, longitudeDelta: 0.06 },
+        mapRef.current?.animateToRegion(
+          { latitude: lat, longitude: lng, ...MAP_DELTA_SELECTED },
           280
         );
       });
@@ -402,7 +475,7 @@ export default function EmbeddedTripMap({
   const handlePickupMapPress = (e) => {
     const { latitude, longitude } = e.nativeEvent.coordinate;
     if (!isInJordan(latitude, longitude)) {
-      Alert.alert('', i18n.t('error_location_outside_jordan'));
+      alertLocationOutsideJordan();
       return;
     }
     applyCoord(latitude, longitude, 'pickup');
@@ -412,18 +485,50 @@ export default function EmbeddedTripMap({
     if (skipDestination) return;
     const { latitude, longitude } = e.nativeEvent.coordinate;
     if (!isInJordan(latitude, longitude)) {
-      Alert.alert('', i18n.t('error_location_outside_jordan'));
+      alertLocationOutsideJordan();
       return;
     }
     applyCoord(latitude, longitude, 'destination');
   };
+
+  const handleMapPress = (e) => {
+    if (skipDestination || activeMode === 'pickup') {
+      handlePickupMapPress(e);
+    } else {
+      handleDestinationMapPress(e);
+    }
+  };
+
+  const handlePickupDragEnd = (e) => {
+    const { latitude, longitude } = e.nativeEvent.coordinate;
+    if (!isInJordan(latitude, longitude)) {
+      alertLocationOutsideJordan();
+      return;
+    }
+    applyCoord(latitude, longitude, 'pickup');
+  };
+
+  const handleDestinationDragEnd = (e) => {
+    if (skipDestination) return;
+    const { latitude, longitude } = e.nativeEvent.coordinate;
+    if (!isInJordan(latitude, longitude)) {
+      alertLocationOutsideJordan();
+      return;
+    }
+    applyCoord(latitude, longitude, 'destination');
+  };
+
+  /** Both pins stay draggable whenever they exist so users can drag-and-drop without switching tabs. */
+  const pickupDraggable = order.pickup?.latitude != null;
+  const destinationDraggable =
+    !skipDestination && order.destination?.latitude != null;
 
   const handlePlaceSelect = (data, details, mode) => {
     if (details?.geometry?.location) {
       const lat = details.geometry.location.lat;
       const lng = details.geometry.location.lng;
       if (!isInJordan(lat, lng)) {
-        Alert.alert('', i18n.t('error_location_outside_jordan'));
+        alertLocationOutsideJordan();
         return;
       }
       const addr = details.formatted_address || data.description;
@@ -432,11 +537,7 @@ export default function EmbeddedTripMap({
       } else if (!skipDestination) {
         updateOrder({ destination: { latitude: lat, longitude: lng, address: addr } });
       }
-      const ref = mode === 'pickup' ? mapRefPickup : mapRefDestination;
-      ref.current?.animateToRegion(
-        { latitude: lat, longitude: lng, latitudeDelta: 0.06, longitudeDelta: 0.06 },
-        280
-      );
+      mapRef.current?.animateToRegion({ latitude: lat, longitude: lng, ...MAP_DELTA_SELECTED }, 280);
     }
   };
 
@@ -451,14 +552,14 @@ export default function EmbeddedTripMap({
         Alert.alert('', i18n.t('error_select_location'));
         return;
       }
-      const loc = await Location.getCurrentPositionAsync({});
-      const { latitude, longitude } = loc.coords;
-      if (!isInJordan(latitude, longitude)) {
-        Alert.alert('', i18n.t('error_location_outside_jordan'));
+      const resolved = await getJordanCoordinatesFromDevice();
+      if (!resolved) {
+        alertLocationOutsideJordan();
         return;
       }
+      const { latitude, longitude, jordanVerifiedOffBBox } = resolved;
       const mode = skipDestination || activeMode === 'pickup' ? 'pickup' : 'destination';
-      await applyCoord(latitude, longitude, mode);
+      await applyCoord(latitude, longitude, mode, { jordanVerifiedOffBBox });
     } catch {
       Alert.alert('', i18n.t('error_select_location'));
     } finally {
@@ -480,25 +581,14 @@ export default function EmbeddedTripMap({
         const { status } = await Location.requestForegroundPermissionsAsync();
         if (status !== 'granted' || cancelled) return;
         if (orderPickRef.current?.latitude != null) return;
-        const loc = await Location.getCurrentPositionAsync({
-          accuracy: Location.Accuracy.Balanced,
-        });
-        if (cancelled) return;
-        const { latitude, longitude } = loc.coords;
-        if (!isInJordan(latitude, longitude)) return;
+        const resolved = await getJordanCoordinatesFromDevice();
+        if (cancelled || !resolved) return;
+        const { latitude, longitude } = resolved;
         if (cancelled || orderPickRef.current?.latitude != null) return;
         updateOrder({ pickup: { latitude, longitude, address: '' } });
         requestAnimationFrame(() => {
           if (cancelled) return;
-          mapRefPickup.current?.animateToRegion(
-            {
-              latitude,
-              longitude,
-              latitudeDelta: 0.08,
-              longitudeDelta: 0.08,
-            },
-            320
-          );
+          mapRef.current?.animateToRegion({ latitude, longitude, ...MAP_DELTA_LOOSE }, 320);
         });
         const address = await reverseGeocode(latitude, longitude);
         if (cancelled) return;
@@ -559,43 +649,31 @@ export default function EmbeddedTripMap({
       style={[styles.root, bleedOffset > 0 && { marginTop: -bleedOffset }]}
     >
       <View style={styles.mapShell}>
-        {skipDestination || activeMode === 'pickup' ? (
-          <MapView
-            ref={mapRefPickup}
-            provider={PROVIDER_GOOGLE}
-            style={styles.map}
-            initialRegion={{ ...JORDAN_CENTER, ...INITIAL_DELTA }}
-            onPress={handlePickupMapPress}
-            showsUserLocation
-            showsMyLocationButton={false}
-            pitchEnabled
-            rotateEnabled
-            mapType="standard"
-            scrollEnabled
-            zoomEnabled
-            zoomTapEnabled
-          >
-            <MapOverlays order={order} lineCoords={polylineCoords} skipDestination={skipDestination} />
-          </MapView>
-        ) : (
-          <MapView
-            ref={mapRefDestination}
-            provider={PROVIDER_GOOGLE}
-            style={styles.map}
-            initialRegion={{ ...JORDAN_CENTER, ...INITIAL_DELTA }}
-            onPress={handleDestinationMapPress}
-            showsUserLocation
-            showsMyLocationButton={false}
-            pitchEnabled
-            rotateEnabled
-            mapType="standard"
-            scrollEnabled
-            zoomEnabled
-            zoomTapEnabled
-          >
-            <MapOverlays order={order} lineCoords={polylineCoords} skipDestination={skipDestination} />
-          </MapView>
-        )}
+        <MapView
+          ref={mapRef}
+          provider={PROVIDER_GOOGLE}
+          style={styles.map}
+          initialRegion={{ ...JORDAN_CENTER, ...INITIAL_DELTA }}
+          onPress={handleMapPress}
+          showsUserLocation
+          showsMyLocationButton={false}
+          pitchEnabled
+          rotateEnabled
+          mapType="standard"
+          scrollEnabled
+          zoomEnabled
+          zoomTapEnabled
+        >
+          <MapOverlays
+            order={order}
+            lineCoords={polylineCoords}
+            skipDestination={skipDestination}
+            pickupDraggable={pickupDraggable}
+            destinationDraggable={destinationDraggable}
+            onPickupDragEnd={handlePickupDragEnd}
+            onDestinationDragEnd={handleDestinationDragEnd}
+          />
+        </MapView>
 
         <TouchableOpacity
           style={[styles.fabMyLocation, { bottom: fabBottom }]}
@@ -619,43 +697,37 @@ export default function EmbeddedTripMap({
           >
             <View style={styles.sheetHandle} />
 
-            <ScrollView
-              style={{ maxHeight: scrollMaxH }}
-              contentContainerStyle={styles.bottomScrollContent}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-              nestedScrollEnabled
-            >
-              <View style={styles.modeTabs}>
-                <Pressable
-                  style={[styles.tab, activeMode === 'pickup' && styles.tabActive]}
-                  onPress={() => setActiveMode('pickup')}
-                >
-                  <View style={[styles.dot, styles.dotPickup]} />
-                  <Text style={[styles.tabText, activeMode === 'pickup' && styles.tabTextActive]} numberOfLines={1}>
-                    {i18n.t('pickup_location')}
-                  </Text>
-                </Pressable>
-                <Pressable
-                  style={[styles.tab, activeMode === 'destination' && styles.tabActive, skipDestination && styles.tabDisabled]}
-                  onPress={() => !skipDestination && setActiveMode('destination')}
-                >
-                  <View style={[styles.dot, styles.dotDest]} />
-                  <Text style={[styles.tabText, activeMode === 'destination' && styles.tabTextActive]} numberOfLines={1}>
-                    {i18n.t('destination')}
-                  </Text>
-                </Pressable>
-              </View>
+            <View style={styles.modeTabs}>
+              <Pressable
+                style={[styles.tab, activeMode === 'pickup' && styles.tabActive]}
+                onPress={() => setActiveMode('pickup')}
+              >
+                <View style={[styles.dot, styles.dotPickup]} />
+                <Text style={[styles.tabText, activeMode === 'pickup' && styles.tabTextActive]} numberOfLines={1}>
+                  {i18n.t('pickup_location')}
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[styles.tab, activeMode === 'destination' && styles.tabActive, skipDestination && styles.tabDisabled]}
+                onPress={() => !skipDestination && setActiveMode('destination')}
+              >
+                <View style={[styles.dot, styles.dotDest]} />
+                <Text style={[styles.tabText, activeMode === 'destination' && styles.tabTextActive]} numberOfLines={1}>
+                  {i18n.t('destination')}
+                </Text>
+              </Pressable>
+            </View>
 
-              <View style={styles.searchJordanRow}>
-                <Ionicons name="search" size={18} color={colors.primary} />
-                <Text style={styles.searchJordanText}>{i18n.t('search_places')}</Text>
-              </View>
+            <View style={styles.searchJordanRow}>
+              <Ionicons name="search" size={18} color={colors.primary} />
+              <Text style={styles.searchJordanText}>{i18n.t('search_places')}</Text>
+            </View>
 
+            {/* Places autocomplete must NOT sit inside ScrollView: its FlatList is a VirtualizedList and nested lists collapse or clip. */}
+            <View style={styles.searchPillWrap}>
               <View style={styles.searchPill}>
                 {hasPlacesKey ? (
                   <GooglePlacesAutocomplete
-                    key={`${activeMode}-${skipDestination}`}
                     ref={placesRef}
                     suppressDefaultStyles
                     placeholder={
@@ -685,7 +757,15 @@ export default function EmbeddedTripMap({
                   <Text style={styles.noKeyHint}>{i18n.t('maps_key_hint')}</Text>
                 )}
               </View>
+            </View>
 
+            <ScrollView
+              style={{ maxHeight: scrollMaxH }}
+              contentContainerStyle={styles.bottomScrollContent}
+              keyboardShouldPersistTaps="always"
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled
+            >
               {!skipDestination && (routeMetrics.km != null || routeMetrics.minutes != null) && (
                 <View style={styles.statsRowOverlay}>
                   <View style={styles.statCol}>
@@ -793,13 +873,17 @@ const styles = StyleSheet.create({
     fontWeight: ios.fontWeight.semibold,
     color: colors.textSecondary,
   },
+  searchPillWrap: {
+    zIndex: 30,
+    elevation: 30,
+    marginBottom: 10,
+  },
   searchPill: {
     backgroundColor: colors.background,
     borderRadius: ios.radius.md,
     borderWidth: 1,
     borderColor: colors.border,
-    overflow: 'hidden',
-    marginBottom: 10,
+    overflow: 'visible',
   },
   placesContainer: {
     flexGrow: 0,
@@ -817,7 +901,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'transparent',
   },
   placesList: {
-    maxHeight: 140,
+    maxHeight: 220,
     backgroundColor: colors.surface,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
@@ -844,7 +928,14 @@ const styles = StyleSheet.create({
     elevation: 6,
     zIndex: 15,
   },
-  markerWrap: { alignItems: 'center' },
+  markerLabelOnlyWrap: {
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  markerPinHit: {
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
   markerLabelPickup: {
     backgroundColor: colors.white,
     paddingHorizontal: 10,

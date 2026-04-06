@@ -7,6 +7,7 @@ const googleMapsKey =
 const apiBaseURL = process.env.EXPO_PUBLIC_API_BASE_URL || "https://trip5-api.vercel.app";
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || "";
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || "";
+const authEmailDomain = process.env.EXPO_PUBLIC_AUTH_EMAIL_DOMAIN || "phone.trip5.app";
 
 export default {
   expo: {
@@ -16,8 +17,10 @@ export default {
       apiBaseURL,
       supabaseUrl,
       supabaseAnonKey,
+      authEmailDomain,
     },
     slug: "trip5-expo",
+    scheme: "trip5",
     version: "1.0.0",
     orientation: "portrait",
     icon: "./assets/trip5-logo.png",

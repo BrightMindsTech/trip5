@@ -41,10 +41,15 @@ export default function ConfirmationScreen({
     const s = order.service;
     if (!s) return '';
     if (s.type === 'basic') return `${i18n.t('service_basic')} - 5 ${i18n.t('jod')}`;
-    if (s.type === 'private')
-      return `${i18n.t('service_private')} - 15 ${i18n.t('jod')} (${s.alone ? i18n.t('alone') : i18n.t('family')})`;
+    if (s.type === 'private') {
+      const party =
+        typeof s.alone === 'boolean' ? (s.alone ? i18n.t('alone') : i18n.t('family')) : null;
+      return party
+        ? `${i18n.t('service_private')} - 15 ${i18n.t('jod')} (${party})`
+        : `${i18n.t('service_private')} - 15 ${i18n.t('jod')}`;
+    }
     if (s.type === 'airport') {
-      const price = order.route === 'irbid_to_amman' ? 25 : 15;
+      const price = ['airport_to_irbid', 'irbid_to_airport'].includes(order.route) ? 25 : 15;
       return `${i18n.t('service_airport')} - ${price} ${i18n.t('jod')} (${s.toAirport ? i18n.t('to_airport') : i18n.t('from_airport')})`;
     }
     if (s.type === 'instant') return `${i18n.t('service_instant')}: ${s.description}`;

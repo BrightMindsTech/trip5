@@ -24,6 +24,7 @@ import i18n from '../i18n';
 import { colors, ios } from '../theme';
 import EmbeddedTripMap from '../components/EmbeddedTripMap';
 import { useAuth } from '../context/AuthContext';
+import { TERMS_AND_PRIVACY_TEXT } from '../legal/termsPrivacyText';
 
 const AMMAN_PHOTO = require('../../assets/amman-photo.png');
 const IRBID_PHOTO = require('../../assets/irbid-photo.png');
@@ -31,62 +32,6 @@ const AIRPORT_PHOTO = require('../../assets/airport-photo.png');
 
 const HOLD_DURATION = 140;
 const FADE_DURATION = 260;
-
-const TERMS_AND_PRIVACY_TEXT = `Terms of Service
-Trip5 ("we," "our," or "us") operates a ride-sharing and transport platform in Jordan, connecting passengers and senders with drivers for trips between Amman and Irbid, including airport and custom routes.
-
-1. Service Description
-Trip5 provides transport options such as Basic Ride, Private Ride, Airport Service, and Instant Order. You may book trips for today or for a future date. All services are subject to driver availability.
-
-2. User Obligations
-You agree to provide accurate contact and trip details, treat drivers and staff with respect, and use the service only for lawful purposes. You must be at least 18 years old to use the platform.
-
-3. Payment & Pricing
-Prices are shown in Jordanian Dinars (JOD) at the time of booking. Payment is collected according to the selected service type. Prices may vary by route, service type, and demand.
-
-4. Cancellation & Refunds
-Cancellation and refund rules are described in the booking flow and in-app communications. Late cancellations or no-shows may be subject to charges.
-
-5. Limitation of Liability
-Trip5 acts as an intermediary between users and drivers. We are not liable for delays, accidents, or other incidents caused by drivers, traffic, or third parties, except where required by applicable law.
-
-6. Modifications
-We may change these Terms at any time. Continued use of the service after changes constitutes acceptance of the updated Terms.
-
-Privacy Policy
-Trip5 respects your privacy and is committed to protecting your personal data.
-
-1. Information We Collect
-We collect information you provide when booking, including:
-• Name and phone number
-• Pickup and destination addresses
-• Trip date, time, and service type
-• Device and app usage data for improving the service
-
-2. How We Use Your Information
-We use your data to:
-• Match you with drivers and manage trips
-• Process payments and communicate about your bookings
-• Improve our services and troubleshoot technical issues
-• Comply with legal and regulatory obligations
-
-3. Data Sharing
-We share your information with drivers and partners necessary to complete your trips. We do not sell your personal data. We may disclose data when required by law or to protect our rights and safety.
-
-4. Data Security
-We use reasonable technical and organisational measures to protect your data against unauthorised access, loss, or misuse.
-
-5. Data Retention
-We retain your data for as long as needed to provide the service, handle complaints or disputes, and fulfil legal requirements. After that, we delete or anonymise it where possible.
-
-6. Your Rights
-You may request access to, correction of, or deletion of your personal data by contacting us. You may also withdraw consent for certain uses of your data where applicable.
-
-7. Changes
-We may update this Privacy Policy from time to time. We will notify you of important changes through the app or by other appropriate means.
-
-8. Contact Us
-For questions about these Terms or our Privacy Policy, contact us at [your email or contact details].`;
 
 export default function UnifiedFlowScreen({
   order,
@@ -105,6 +50,9 @@ export default function UnifiedFlowScreen({
   orderSent,
   submit,
   resetOrder,
+  onExitAfterSuccess,
+  exitAfterSuccessLabel,
+  initialOpenAirportModal = false,
 }) {
   const isArabic = i18n.locale === 'ar';
   const { profile } = useAuth();
@@ -195,9 +143,24 @@ export default function UnifiedFlowScreen({
   const [instantDesc, setInstantDesc] = useState(order.service?.description || '');
   const [showPrivate, setShowPrivate] = useState(false);
   const [showInstant, setShowInstant] = useState(false);
+
+  useEffect(() => {
+    if (currentStep !== 3 || scheduleStep !== 'service') return;
+    if (order.service?.type === 'private') setShowPrivate(true);
+    if (order.service?.type === 'instant') setShowInstant(true);
+  }, [currentStep, scheduleStep, order.service?.type]);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [airportFlowStep, setAirportFlowStep] = useState(null);
   const [showAirportModal, setShowAirportModal] = useState(false);
+  const airportModalFromHomeRef = useRef(false);
+
+  useEffect(() => {
+    if (!initialOpenAirportModal || airportModalFromHomeRef.current) return;
+    if (currentStep !== 1) return;
+    airportModalFromHomeRef.current = true;
+    setAirportFlowStep('from_to');
+    setShowAirportModal(true);
+  }, [initialOpenAirportModal, currentStep]);
 
   const now = new Date();
   const minDate = new Date(now);
@@ -409,8 +372,13 @@ export default function UnifiedFlowScreen({
     const s = order.service;
     if (!s) return '';
     if (s.type === 'basic') return `${i18n.t('service_basic')} - 5 ${i18n.t('jod')}`;
-    if (s.type === 'private')
-      return `${i18n.t('service_private')} - 15 ${i18n.t('jod')} (${s.alone ? i18n.t('alone') : i18n.t('family')})`;
+    if (s.type === 'private') {
+      const party =
+        typeof s.alone === 'boolean' ? (s.alone ? i18n.t('alone') : i18n.t('family')) : null;
+      return party
+        ? `${i18n.t('service_private')} - 15 ${i18n.t('jod')} (${party})`
+        : `${i18n.t('service_private')} - 15 ${i18n.t('jod')}`;
+    }
     if (s.type === 'airport') {
       const price = ['airport_to_irbid', 'irbid_to_airport'].includes(order.route) ? 25 : 15;
       return `${i18n.t('service_airport')} - ${price} ${i18n.t('jod')} (${s.toAirport ? i18n.t('to_airport') : i18n.t('from_airport')})`;
@@ -439,8 +407,19 @@ export default function UnifiedFlowScreen({
           <Text style={styles.successIcon}>✓</Text>
           <Text style={styles.successTitle}>{i18n.t('order_sent')}</Text>
           <Text style={styles.successDesc}>{i18n.t('order_sent_desc')}</Text>
-          <TouchableOpacity style={styles.primaryButton} onPress={resetOrder}>
-            <Text style={styles.primaryButtonText}>{i18n.t('new_order')}</Text>
+          <TouchableOpacity
+            style={styles.primaryButton}
+            onPress={() => {
+              if (onExitAfterSuccess) {
+                onExitAfterSuccess();
+              } else {
+                resetOrder();
+              }
+            }}
+          >
+            <Text style={styles.primaryButtonText}>
+              {exitAfterSuccessLabel || i18n.t('new_order')}
+            </Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -517,7 +496,6 @@ export default function UnifiedFlowScreen({
         const hour12 = timeToShow.getHours() % 12 || 12;
         const minute = timeToShow.getMinutes();
         const isPM = timeToShow.getHours() >= 12;
-        const timeStr = timeToShow.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         const etaEarliest = new Date(timeToShow.getTime() + 1.5 * 60 * 60 * 1000);
         const etaLatest = new Date(timeToShow.getTime() + 2 * 60 * 60 * 1000);
         const formatEtaTime = (d) => {
@@ -532,11 +510,8 @@ export default function UnifiedFlowScreen({
         );
         return (
           <ScrollView style={styles.stepScroll} contentContainerStyle={styles.step3Content} showsVerticalScrollIndicator={false}>
-            <Text style={styles.servicePageTitle}>{i18n.t('step_heading_3')}</Text>
             {scheduleStep === 'date' && (
               <>
-                <Text style={styles.servicePageSubtitle}>{i18n.t('schedule_subtitle')}</Text>
-                <Text style={styles.scheduleSubtitle}>{i18n.t('select_date_first')}</Text>
                 <ScheduleOptionCard
                   icon="calendar"
                   title={i18n.t('today')}
@@ -571,11 +546,6 @@ export default function UnifiedFlowScreen({
             )}
             {scheduleStep === 'time' && (
               <>
-                <Text style={styles.servicePageSubtitle}>{i18n.t('schedule_subtitle')}</Text>
-                <TouchableOpacity style={styles.scheduleBack} onPress={() => setScheduleStep('date')}>
-                  <Ionicons name="chevron-back" size={18} color={colors.primary} />
-                  <Text style={styles.scheduleBackText}>{i18n.t('back')}</Text>
-                </TouchableOpacity>
                 <Text style={styles.selectPickupTimeLabel}>{i18n.t('select_pickup_time')}</Text>
                 <View style={styles.timePickerCard}>
                   <View style={styles.timeDisplayRow}>
@@ -599,11 +569,6 @@ export default function UnifiedFlowScreen({
                       </Pressable>
                     </View>
                   </View>
-                  <Pressable style={styles.pickupBadge} onPress={openTimePicker}>
-                    <Text style={styles.pickupBadgeText}>
-                      {i18n.t('pick_up_around')} {timeStr}
-                    </Text>
-                  </Pressable>
                   <Text style={styles.etaText}>{etaStr}</Text>
                 </View>
                 {isAirportRoute ? (
@@ -634,12 +599,6 @@ export default function UnifiedFlowScreen({
             )}
             {scheduleStep === 'service' && !isAirportRoute && (
               <>
-                <TouchableOpacity style={styles.scheduleBack} onPress={() => setScheduleStep('time')}>
-                  <Ionicons name="chevron-back" size={18} color={colors.primary} />
-                  <Text style={styles.scheduleBackText}>{i18n.t('back_to_schedule')}</Text>
-                </TouchableOpacity>
-                <Text style={[styles.servicePageTitle, { marginTop: 4 }]}>{i18n.t('choose_service')}</Text>
-                <Text style={styles.servicePageSubtitle}>{i18n.t('service_subtitle')}</Text>
                 <ServiceCardNew
                   icon="people"
                   title={i18n.t('service_basic')}
@@ -662,39 +621,69 @@ export default function UnifiedFlowScreen({
                   price={15}
                   isSelected={order.service?.type === 'private'}
                   onPress={() => {
+                    if (isSaving) return;
                     setShowPrivate(true);
                     setShowInstant(false);
+                    setService({ type: 'private' });
                   }}
                 />
                 {showPrivate && (
-                  <View style={[styles.subOptions, isArabic && styles.subOptionsArabic]}>
-                    <TouchableOpacity
-                      style={[styles.subBtn, order.service?.alone && styles.subBtnSelected]}
-                      onPress={() => !isSaving && setService({ type: 'private', alone: true })}
-                      disabled={isSaving}
-                    >
-                      <Text style={order.service?.alone ? styles.subBtnTextSelected : styles.subBtnText}>
-                        {i18n.t('alone')}
-                      </Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={[styles.subBtn, order.service?.alone === false && styles.subBtnSelected]}
-                      onPress={() => !isSaving && setService({ type: 'private', alone: false })}
-                      disabled={isSaving}
-                    >
-                      <Text style={order.service?.alone === false ? styles.subBtnTextSelected : styles.subBtnText}>
-                        {i18n.t('family')}
-                      </Text>
-                    </TouchableOpacity>
+                  <View
+                    style={[
+                      styles.privateChoiceWrap,
+                      typeof order.service?.alone !== 'boolean' && styles.privateChoiceWrapPending,
+                    ]}
+                  >
+                    <View style={[styles.privateChoiceHeader, isArabic && styles.privateChoiceHeaderRtl]}>
+                      <Ionicons name="people" size={22} color={colors.primary} style={styles.privateChoiceIcon} />
+                      <View style={styles.privateChoiceHeaderText}>
+                        <Text style={[styles.privateChoiceTitle, isArabic && styles.privateChoiceTextRtl]}>
+                          {i18n.t('private_ride_choose_title')}
+                        </Text>
+                        <Text style={[styles.privateChoiceHint, isArabic && styles.privateChoiceTextRtl]}>
+                          {i18n.t('private_ride_choose_hint')}
+                        </Text>
+                      </View>
+                    </View>
+                    <View style={[styles.subOptions, isArabic && styles.subOptionsArabic]}>
+                      <TouchableOpacity
+                        style={[styles.subBtn, styles.subBtnLarge, order.service?.alone === true && styles.subBtnSelected]}
+                        onPress={() => !isSaving && setService({ type: 'private', alone: true })}
+                        disabled={isSaving}
+                      >
+                        <Text style={order.service?.alone === true ? styles.subBtnTextSelected : styles.subBtnText}>
+                          {i18n.t('alone')}
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.subBtn,
+                          styles.subBtnLarge,
+                          order.service?.alone === false && styles.subBtnSelected,
+                        ]}
+                        onPress={() => !isSaving && setService({ type: 'private', alone: false })}
+                        disabled={isSaving}
+                      >
+                        <Text style={order.service?.alone === false ? styles.subBtnTextSelected : styles.subBtnText}>
+                          {i18n.t('family')}
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
                   </View>
                 )}
-                <InstantOrderCard
+                <ServiceCardNew
+                  icon="cube-outline"
                   title={i18n.t('service_instant')}
                   subtitle={i18n.t('service_instant_desc_card')}
+                  price={null}
+                  isSelected={order.service?.type === 'instant'}
                   onPress={() => {
+                    if (isSaving) return;
                     setShowInstant(true);
                     setShowPrivate(false);
+                    setService({ type: 'instant', description: instantDesc || '' });
                   }}
+                  disabled={isSaving}
                 />
                 {showInstant && (
                   <TextInput
@@ -705,10 +694,6 @@ export default function UnifiedFlowScreen({
                     multiline
                   />
                 )}
-                <View style={styles.routeOptimizedBanner}>
-                  <View style={styles.routeOptimizedDot} />
-                  <Text style={styles.routeOptimizedText}>{i18n.t('route_optimized')}</Text>
-                </View>
                 <Pressable
                   style={({ pressed }) => [
                     styles.primaryButton,
@@ -1185,24 +1170,6 @@ function ServiceCardNew({ icon, title, subtitle, price, isSelected, onPress, dis
   );
 }
 
-function InstantOrderCard({ title, subtitle, onPress }) {
-  return (
-    <Pressable
-      style={({ pressed }) => [styles.instantOrderCard, pressed && styles.instantOrderCardPressed]}
-      onPress={onPress}
-    >
-      <View style={styles.instantOrderIcon}>
-        <Ionicons name="cube-outline" size={24} color={colors.primary} />
-      </View>
-      <View style={styles.instantOrderContent}>
-        <Text style={styles.instantOrderTitle}>{title}</Text>
-        <Text style={styles.instantOrderSubtitle}>{subtitle}</Text>
-      </View>
-      <Ionicons name="chevron-forward" size={20} color={colors.primary} />
-    </Pressable>
-  );
-}
-
 function ServiceOption({ title, subtitle, price, onPress, isSelected, disabled }) {
   return (
     <Pressable
@@ -1576,18 +1543,6 @@ const styles = StyleSheet.create({
   step3Content: {
     paddingBottom: ios.spacing.xxl,
   },
-  servicePageTitle: {
-    fontSize: ios.fontSize.title1,
-    fontWeight: ios.fontWeight.bold,
-    color: colors.text,
-    marginBottom: ios.spacing.sm,
-    letterSpacing: -0.5,
-  },
-  servicePageSubtitle: {
-    fontSize: ios.fontSize.body,
-    color: colors.textSecondary,
-    marginBottom: ios.spacing.xl,
-  },
   serviceCardNew: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1648,73 +1603,12 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   serviceCardNewSubtitleSelected: { color: colors.primary, opacity: 0.9 },
-  instantOrderCard: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    padding: ios.spacing.xl,
-    borderRadius: 20,
-    marginBottom: ios.spacing.lg,
-    borderWidth: 2,
-    borderColor: colors.primary,
-    backgroundColor: colors.surface,
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOpacity: 0.04, shadowRadius: 8, shadowOffset: { width: 0, height: 1 } },
-      android: { elevation: 2 },
-    }),
-  },
-  instantOrderCardPressed: { opacity: 0.9 },
-  instantOrderIcon: {
-    width: 48,
-    height: 48,
-    borderRadius: 24,
-    backgroundColor: colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: ios.spacing.lg,
-  },
-  instantOrderContent: { flex: 1 },
-  instantOrderTitle: {
-    fontSize: ios.fontSize.title3,
-    fontWeight: ios.fontWeight.bold,
-    color: colors.text,
-  },
-  instantOrderSubtitle: {
-    fontSize: ios.fontSize.footnote,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  routeOptimizedBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.metallic,
-    padding: ios.spacing.lg,
-    borderRadius: ios.radius.lg,
-    marginTop: ios.spacing.sm,
-  },
-  routeOptimizedDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: colors.primary,
-    marginRight: ios.spacing.sm,
-  },
-  routeOptimizedText: {
-    fontSize: ios.fontSize.caption,
-    fontWeight: ios.fontWeight.semibold,
-    color: colors.textSecondary,
-    letterSpacing: 0.5,
-  },
   scheduleTitle: {
     fontSize: ios.fontSize.title1,
     fontWeight: ios.fontWeight.bold,
     color: colors.text,
     marginBottom: ios.spacing.sm,
     letterSpacing: -0.5,
-  },
-  scheduleSubtitle: {
-    fontSize: ios.fontSize.body,
-    color: colors.textSecondary,
-    marginBottom: ios.spacing.xl,
   },
   scheduleCard: {
     flexDirection: 'row',
@@ -1781,18 +1675,6 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
     marginBottom: ios.spacing.sm,
   },
-  scheduleBack: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: ios.spacing.lg,
-    paddingVertical: ios.spacing.sm,
-  },
-  scheduleBackText: {
-    fontSize: ios.fontSize.body,
-    color: colors.primary,
-    fontWeight: ios.fontWeight.semibold,
-    marginStart: ios.spacing.xs,
-  },
   timePickerCard: {
     backgroundColor: colors.surface,
     borderRadius: 20,
@@ -1846,23 +1728,10 @@ const styles = StyleSheet.create({
     color: colors.textSecondary,
   },
   ampmTextSelected: { color: colors.white },
-  pickupBadge: {
-    alignSelf: 'flex-start',
-    backgroundColor: colors.primaryLight,
-    paddingVertical: 6,
-    paddingHorizontal: ios.spacing.md,
-    borderRadius: 20,
-    marginTop: ios.spacing.lg,
-  },
-  pickupBadgeText: {
-    fontSize: ios.fontSize.footnote,
-    fontWeight: ios.fontWeight.medium,
-    color: colors.primary,
-  },
   etaText: {
     fontSize: ios.fontSize.footnote,
     color: colors.textSecondary,
-    marginTop: ios.spacing.sm,
+    marginTop: ios.spacing.lg,
   },
   driverWaitBox: {
     flexDirection: 'row',
@@ -2279,22 +2148,65 @@ const styles = StyleSheet.create({
   },
   price: { fontSize: 16, fontWeight: '600', color: colors.primary },
   priceSelected: { color: colors.primary },
-  subOptions: { flexDirection: 'row', gap: ios.spacing.md, marginBottom: ios.spacing.md, marginLeft: ios.spacing.lg },
-  subOptionsArabic: { marginLeft: 0, marginRight: ios.spacing.lg },
-  subBtn: {
-    paddingHorizontal: ios.spacing.lg,
-    paddingVertical: ios.spacing.sm,
+  subOptions: { flexDirection: 'row', gap: ios.spacing.md, marginBottom: 0, marginLeft: 0 },
+  subOptionsArabic: { marginLeft: 0, marginRight: 0 },
+  privateChoiceWrap: {
+    marginBottom: ios.spacing.md,
+    marginHorizontal: ios.spacing.sm,
+    padding: ios.spacing.lg,
+    borderRadius: ios.radius.lg,
     backgroundColor: colors.surface,
-    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  privateChoiceWrapPending: {
+    borderColor: colors.primary,
+    borderWidth: 2,
+    backgroundColor: colors.primaryLight,
+  },
+  privateChoiceHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: ios.spacing.md,
+    marginBottom: ios.spacing.lg,
+  },
+  privateChoiceHeaderRtl: { flexDirection: 'row-reverse' },
+  privateChoiceIcon: { marginTop: 2 },
+  privateChoiceHeaderText: { flex: 1 },
+  privateChoiceTextRtl: { textAlign: 'right', writingDirection: 'rtl' },
+  privateChoiceTitle: {
+    fontSize: ios.fontSize.body,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  privateChoiceHint: {
+    fontSize: ios.fontSize.footnote,
+    color: colors.textSecondary,
+    lineHeight: 20,
+  },
+  subBtn: {
+    flex: 1,
+    paddingHorizontal: ios.spacing.md,
+    paddingVertical: ios.spacing.md,
+    backgroundColor: colors.surface,
+    borderRadius: ios.radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 48,
+  },
+  subBtnLarge: {
+    paddingVertical: ios.spacing.lg,
+    minHeight: 52,
   },
   subBtnSelected: {
     backgroundColor: colors.primary,
     borderColor: colors.primary,
   },
-  subBtnText: { color: colors.text },
-  subBtnTextSelected: { color: colors.white, fontWeight: '600' },
+  subBtnText: { color: colors.text, fontSize: ios.fontSize.callout, fontWeight: '600', textAlign: 'center' },
+  subBtnTextSelected: { color: colors.white, fontWeight: '700' },
   input: {
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,

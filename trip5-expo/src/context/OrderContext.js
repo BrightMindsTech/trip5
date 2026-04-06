@@ -40,8 +40,10 @@ export function OrderProvider({ children }) {
       if ('route' in updates && updates.route !== prev.route) {
         next.pickup = null;
         next.destination = null;
-        next.service = null;
         next.skipDestination = false;
+        if (!('service' in updates)) {
+          next.service = null;
+        }
       }
       return next;
     });
@@ -86,7 +88,9 @@ export function OrderProvider({ children }) {
   const serviceOk =
     isAirportRoute ||
     (order.service &&
-      (order.service.type !== 'instant' || (order.service.description || '').trim()));
+      (order.service.type === 'private'
+        ? typeof order.service.alone === 'boolean'
+        : order.service.type !== 'instant' || (order.service.description || '').trim()));
 
   const canProceedFromServiceSchedule = isAirportRoute
     ? scheduleStep === 'time'

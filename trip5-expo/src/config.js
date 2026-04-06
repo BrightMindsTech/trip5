@@ -12,4 +12,9 @@ export const Config = {
     process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY ||
     process.env.GOOGLE_MAPS_API_KEY ||
     '',
+  /** Domain for synthetic auth emails `{digits}@domain` (Supabase email/password). */
+  authEmailDomain:
+    Constants.expoConfig?.extra?.authEmailDomain ||
+    process.env.EXPO_PUBLIC_AUTH_EMAIL_DOMAIN ||
+    'phone.trip5.app',
 };

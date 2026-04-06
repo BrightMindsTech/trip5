@@ -83,7 +83,7 @@ export default async function handler(req, res) {
     return res.status(500).json({ error: 'Could not load profile' });
   }
 
-  const passengerName = (profile?.full_name || '').trim() || user.email || 'Passenger';
+  const passengerName = (profile?.full_name || '').trim() || 'Passenger';
   const passengerPhone = (profile?.phone || '').trim();
   if (!passengerPhone) {
     return res.status(400).json({

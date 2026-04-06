@@ -20,6 +20,8 @@ import { colors } from '../theme';
 
 const JORDAN_CENTER = { latitude: 32.5565, longitude: 35.8467 };
 const MAP_DELTA = { latitudeDelta: 0.5, longitudeDelta: 0.5 };
+/** Zoom after picking a place or setting the pin (matches trip map embedded picker). */
+const SELECT_LOCATION_DELTA = { latitudeDelta: 0.009, longitudeDelta: 0.009 };
 
 const MAP_TYPES = ['standard', 'satellite', 'hybrid'];
 const ZOOM_IN_FACTOR = 0.5;
@@ -66,13 +68,9 @@ export default function MapLocationPicker({ visible, title, onSelect, onClose, i
       setRegion({
         latitude,
         longitude,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
+        ...SELECT_LOCATION_DELTA,
       });
-      mapRef.current?.animateToRegion(
-        { latitude, longitude, latitudeDelta: 0.01, longitudeDelta: 0.01 },
-        300
-      );
+      mapRef.current?.animateToRegion({ latitude, longitude, ...SELECT_LOCATION_DELTA }, 300);
       await reverseGeocode(latitude, longitude);
     } catch {
       Alert.alert('', i18n.t('error_select_location'));
@@ -98,7 +96,8 @@ export default function MapLocationPicker({ visible, title, onSelect, onClose, i
   const handleMapPress = (e) => {
     const { latitude, longitude } = e.nativeEvent.coordinate;
     setMarker({ latitude, longitude });
-    setRegion((prev) => ({ ...prev, latitude, longitude }));
+    setRegion((prev) => ({ ...prev, latitude, longitude, ...SELECT_LOCATION_DELTA }));
+    mapRef.current?.animateToRegion({ latitude, longitude, ...SELECT_LOCATION_DELTA }, 300);
     reverseGeocode(latitude, longitude);
   };
 
@@ -110,19 +109,10 @@ export default function MapLocationPicker({ visible, title, onSelect, onClose, i
       setRegion({
         latitude: lat,
         longitude: lng,
-        latitudeDelta: 0.01,
-        longitudeDelta: 0.01,
+        ...SELECT_LOCATION_DELTA,
       });
       setSearchText(details.formatted_address || data.description);
-      mapRef.current?.animateToRegion(
-        {
-          latitude: lat,
-          longitude: lng,
-          latitudeDelta: 0.01,
-          longitudeDelta: 0.01,
-        },
-        300
-      );
+      mapRef.current?.animateToRegion({ latitude: lat, longitude: lng, ...SELECT_LOCATION_DELTA }, 300);
     }
   };
 
