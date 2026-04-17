@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useCallback, useEffect } from 'react';
 import { submitOrder } from '../api';
 import { useAuth } from './AuthContext';
+import { supabase } from '../lib/supabase';
 
 const OrderContext = createContext();
 
@@ -19,11 +20,15 @@ const initialOrder = {
 export function OrderProvider({ children }) {
   const { accessToken } = useAuth();
   const [order, setOrder] = useState(initialOrder);
-  const [currentStep, setCurrentStep] = useState(1);
+  const [currentStep, setCurrentStep] = useState(2);
   const [scheduleStep, setScheduleStep] = useState('date');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState(null);
   const [orderSent, setOrderSent] = useState(false);
+  /** Set after submitOrder resolves: server dispatch / driver-offer result */
+  const [orderDispatch, setOrderDispatch] = useState(null);
+  /** Human-readable ref from server (orders.trip_reference) for support */
+  const [submittedTripReference, setSubmittedTripReference] = useState(null);
 
   useEffect(() => {
     if (currentStep !== 3) setScheduleStep('date');
@@ -68,7 +73,7 @@ export function OrderProvider({ children }) {
         return;
       }
     }
-    setCurrentStep((s) => Math.max(s - 1, 1));
+    setCurrentStep((s) => Math.max(s - 1, 2));
   }, [currentStep, scheduleStep]);
 
   const canProceedFromRoute = order.route !== null;
@@ -149,7 +154,19 @@ export function OrderProvider({ children }) {
     setIsSubmitting(true);
     setSubmitError(null);
     try {
-      await submitOrder(buildOrderPayload(), accessToken);
+      const { data: refData } = await supabase.auth.refreshSession();
+      let token = refData?.session?.access_token ?? null;
+      if (!token) {
+        const { data: { session } } = await supabase.auth.getSession();
+        token = session?.access_token ?? null;
+      }
+      if (!token) {
+        setSubmitError('Please sign in again.');
+        return;
+      }
+      const res = await submitOrder(buildOrderPayload(), token);
+      setOrderDispatch(res?.dispatch ?? null);
+      setSubmittedTripReference(res?.trip_reference != null ? String(res.trip_reference) : null);
       setOrderSent(true);
     } catch (err) {
       setSubmitError(err.message || 'Failed to send. Please try again.');
@@ -160,11 +177,13 @@ export function OrderProvider({ children }) {
 
   const resetOrder = useCallback(() => {
     setOrder(initialOrder);
-    setCurrentStep(1);
+    setCurrentStep(2);
     setScheduleStep('date');
     setIsSubmitting(false);
     setSubmitError(null);
     setOrderSent(false);
+    setOrderDispatch(null);
+    setSubmittedTripReference(null);
   }, []);
 
   const value = {
@@ -183,6 +202,8 @@ export function OrderProvider({ children }) {
     isSubmitting,
     submitError,
     orderSent,
+    orderDispatch,
+    submittedTripReference,
     submit,
     resetOrder,
     buildOrderPayload,

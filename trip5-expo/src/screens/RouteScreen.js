@@ -1,9 +1,126 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import i18n from '../i18n';
-import { colors } from '../theme';
+import { useTheme } from '../context/ThemeContext';
+
+function createStyles(colors) {
+  return StyleSheet.create({
+    container: {
+      flex: 1,
+      padding: 24,
+      paddingTop: 48,
+      backgroundColor: colors.background,
+    },
+    title: {
+      fontSize: 24,
+      fontWeight: '700',
+      marginBottom: 20,
+      textAlign: 'center',
+      color: colors.text,
+      letterSpacing: 0.2,
+    },
+    card: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingVertical: 18,
+      paddingHorizontal: 18,
+      borderRadius: 12,
+      marginBottom: 14,
+      shadowColor: '#0B1220',
+      shadowOpacity: 0.06,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 6 },
+      elevation: 2,
+    },
+    cardSelected: {
+      borderColor: colors.primary,
+      backgroundColor: colors.primaryLight,
+      shadowOpacity: 0.12,
+      elevation: 4,
+    },
+    cardRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      gap: 12,
+    },
+    cardRowArabic: {
+      flexDirection: 'row-reverse',
+    },
+    titleStack: { flex: 1, alignItems: 'center' },
+    cardTitle: {
+      fontSize: 18,
+      fontWeight: '600',
+      color: colors.text,
+      textAlign: 'center',
+    },
+    cardTitleSelected: {
+      color: colors.text,
+    },
+    checkWrap: {
+      width: 34,
+      height: 34,
+      borderRadius: 17,
+      backgroundColor: colors.checkBg,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    check: {
+      color: colors.white,
+      fontSize: 18,
+      fontWeight: '800',
+      lineHeight: 18,
+    },
+    subtitle: {
+      marginTop: 6,
+      fontSize: 12,
+      color: colors.primary,
+      fontWeight: '700',
+      textAlign: 'center',
+      lineHeight: 16,
+    },
+    button: {
+      backgroundColor: colors.primary,
+      paddingVertical: 16,
+      paddingHorizontal: 18,
+      borderRadius: 12,
+      marginTop: 'auto',
+      alignItems: 'center',
+      shadowColor: '#0B1220',
+      shadowOpacity: 0.1,
+      shadowRadius: 10,
+      shadowOffset: { width: 0, height: 8 },
+      elevation: 3,
+    },
+    buttonDisabled: {
+      backgroundColor: colors.disabled,
+      shadowOpacity: 0,
+      elevation: 0,
+    },
+    buttonText: {
+      color: colors.white,
+      fontSize: 18,
+      fontWeight: '700',
+      letterSpacing: 0.2,
+    },
+    cardRowGrid: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      gap: 12,
+    },
+    cardRowGridArabic: {
+      flexDirection: 'row-reverse',
+    },
+    cardGridItem: {
+      flex: 1,
+    },
+  });
+}
 
 export default function RouteScreen({ order, updateOrder, goNext, canProceed }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const isArabic = i18n.locale === 'ar';
 
   const RouteCard = ({ title, subtitle, route, isSelected }) => (
@@ -60,119 +177,3 @@ export default function RouteScreen({ order, updateOrder, goNext, canProceed }) 
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    padding: 24,
-    paddingTop: 48,
-    backgroundColor: colors.background,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: '700',
-    marginBottom: 20,
-    textAlign: 'center',
-    color: colors.text,
-    letterSpacing: 0.2,
-  },
-  card: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: 18,
-    paddingHorizontal: 18,
-    borderRadius: 12,
-    marginBottom: 14,
-    // iOS shadow
-    shadowColor: '#0B1220',
-    shadowOpacity: 0.06,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 6 },
-    // Android shadow
-    elevation: 2,
-  },
-  cardSelected: {
-    borderColor: colors.primary,
-    backgroundColor: colors.primaryLight,
-    shadowOpacity: 0.12,
-    elevation: 4,
-  },
-  cardRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  cardRowArabic: {
-    flexDirection: 'row-reverse',
-  },
-  titleStack: { flex: 1, alignItems: 'center' },
-  cardTitle: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.text,
-    textAlign: 'center',
-  },
-  cardTitleSelected: {
-    color: colors.text,
-  },
-  checkWrap: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: colors.checkBg,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  check: {
-    color: colors.white,
-    fontSize: 18,
-    fontWeight: '800',
-    lineHeight: 18,
-  },
-  subtitle: {
-    marginTop: 6,
-    fontSize: 12,
-    color: colors.primary,
-    fontWeight: '700',
-    textAlign: 'center',
-    lineHeight: 16,
-  },
-  button: {
-    backgroundColor: colors.primary,
-    paddingVertical: 16,
-    paddingHorizontal: 18,
-    borderRadius: 12,
-    marginTop: 'auto',
-    alignItems: 'center',
-    // subtle lift
-    shadowColor: '#0B1220',
-    shadowOpacity: 0.10,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 8 },
-    elevation: 3,
-  },
-  buttonDisabled: {
-    backgroundColor: colors.disabled,
-    shadowOpacity: 0,
-    elevation: 0,
-  },
-  buttonText: {
-    color: colors.white,
-    fontSize: 18,
-    fontWeight: '700',
-    letterSpacing: 0.2,
-  },
-  cardRowGrid: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    gap: 12,
-  },
-  cardRowGridArabic: {
-    flexDirection: 'row-reverse',
-  },
-  cardGridItem: {
-    flex: 1,
-  },
-});

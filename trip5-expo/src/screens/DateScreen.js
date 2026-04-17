@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -10,9 +10,87 @@ import {
 } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import i18n from '../i18n';
-import { colors } from '../theme';
+import { useTheme } from '../context/ThemeContext';
+
+function iosSpinnerPickerProps(isDark) {
+  if (Platform.OS !== 'ios') return {};
+  if (!isDark) return {};
+  return { textColor: '#FFFFFF', themeVariant: 'dark' };
+}
+
+function createDateStyles(colors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    content: { padding: 24, paddingTop: 48, paddingBottom: 48 },
+    title: { fontSize: 22, fontWeight: '600', marginBottom: 24, textAlign: 'center', color: colors.text },
+    card: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 20,
+      borderRadius: 12,
+      marginBottom: 16,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    cardSelected: { backgroundColor: colors.primaryLight, borderColor: colors.primary, borderWidth: 1 },
+    cardTitle: { fontSize: 18, fontWeight: '500', color: colors.text },
+    cardTitleSelected: { color: colors.text },
+    check: { color: colors.primary, fontSize: 20 },
+    pickerButton: {
+      padding: 16,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      marginBottom: 16,
+    },
+    pickerLabel: { fontSize: 14, color: colors.textSecondary, marginBottom: 4 },
+    pickerValue: { fontSize: 16, fontWeight: '500', color: colors.text },
+    button: {
+      backgroundColor: colors.primary,
+      padding: 16,
+      borderRadius: 12,
+      marginTop: 8,
+      alignItems: 'center',
+    },
+    buttonText: { color: colors.white, fontSize: 18, fontWeight: '600' },
+    pickerModalOverlay: {
+      flex: 1,
+      justifyContent: 'flex-end',
+      backgroundColor: 'rgba(0,0,0,0.6)',
+    },
+    pickerModalContent: {
+      backgroundColor: colors.surface,
+      borderTopLeftRadius: 16,
+      borderTopRightRadius: 16,
+      paddingBottom: 32,
+    },
+    pickerModalHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    pickerModalCancel: {
+      fontSize: 17,
+      color: colors.textSecondary,
+    },
+    pickerModalDone: {
+      fontSize: 17,
+      color: colors.primary,
+      fontWeight: '600',
+    },
+  });
+}
 
 export default function DateScreen({ order, updateOrder, goNext }) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createDateStyles(colors), [colors]);
+  const iosPickerDark = iosSpinnerPickerProps(isDark);
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
   const [pendingDate, setPendingDate] = useState(null);
@@ -164,6 +242,7 @@ export default function DateScreen({ order, updateOrder, goNext }) {
                 minimumDate={minDate}
                 onChange={onDateChange}
                 display="spinner"
+                {...iosPickerDark}
               />
             </View>
           </View>
@@ -195,6 +274,7 @@ export default function DateScreen({ order, updateOrder, goNext }) {
                 mode="time"
                 onChange={onTimeChange}
                 display="spinner"
+                {...iosPickerDark}
               />
             </View>
           </View>
@@ -214,70 +294,3 @@ export default function DateScreen({ order, updateOrder, goNext }) {
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: 24, paddingTop: 48, paddingBottom: 48 },
-  title: { fontSize: 22, fontWeight: '600', marginBottom: 24, textAlign: 'center', color: colors.text },
-  card: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 20,
-    borderRadius: 12,
-    marginBottom: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  cardSelected: { backgroundColor: colors.primaryLight, borderColor: colors.primary, borderWidth: 1 },
-  cardTitle: { fontSize: 18, fontWeight: '500', color: colors.text },
-  cardTitleSelected: { color: colors.text },
-  check: { color: colors.primary, fontSize: 20 },
-  pickerButton: {
-    padding: 16,
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    marginBottom: 16,
-  },
-  pickerLabel: { fontSize: 14, color: colors.textSecondary, marginBottom: 4 },
-  pickerValue: { fontSize: 16, fontWeight: '500', color: colors.text },
-  button: {
-    backgroundColor: colors.primary,
-    padding: 16,
-    borderRadius: 12,
-    marginTop: 8,
-    alignItems: 'center',
-  },
-  buttonText: { color: colors.white, fontSize: 18, fontWeight: '600' },
-  pickerModalOverlay: {
-    flex: 1,
-    justifyContent: 'flex-end',
-    backgroundColor: 'rgba(0,0,0,0.6)',
-  },
-  pickerModalContent: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 16,
-    borderTopRightRadius: 16,
-    paddingBottom: 32,
-  },
-  pickerModalHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    padding: 16,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  pickerModalCancel: {
-    fontSize: 17,
-    color: colors.textSecondary,
-  },
-  pickerModalDone: {
-    fontSize: 17,
-    color: colors.primary,
-    fontWeight: '600',
-  },
-});

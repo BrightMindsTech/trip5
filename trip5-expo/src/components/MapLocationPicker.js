@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -16,7 +16,8 @@ import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplet
 import * as Location from 'expo-location';
 import i18n from '../i18n';
 import { Config } from '../config';
-import { colors } from '../theme';
+import { googleMapDarkStyle } from '../theme';
+import { useTheme } from '../context/ThemeContext';
 
 const JORDAN_CENTER = { latitude: 32.5565, longitude: 35.8467 };
 const MAP_DELTA = { latitudeDelta: 0.5, longitudeDelta: 0.5 };
@@ -27,8 +28,98 @@ const MAP_TYPES = ['standard', 'satellite', 'hybrid'];
 const ZOOM_IN_FACTOR = 0.5;
 const ZOOM_OUT_FACTOR = 2;
 
+function createStyles(colors, isDark) {
+  /** Map overlays used fixed white + `colors.text` — in dark mode text is light, so it vanished on white. */
+  const mapChromeBg = isDark ? colors.surface : 'rgba(255,255,255,0.95)';
+  const mapChromeBorderW = isDark ? StyleSheet.hairlineWidth : 0;
+
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      paddingBottom: 12,
+      borderBottomWidth: 1,
+      borderBottomColor: colors.border,
+    },
+    title: { fontSize: 18, fontWeight: '600', flex: 1, marginRight: 8, color: colors.text },
+    closeBtnTouch: { padding: 8 },
+    closeBtn: { fontSize: 28, color: colors.textSecondary, lineHeight: 32 },
+    searchContainer: { paddingHorizontal: 12, paddingTop: 8 },
+    placesContainer: { flex: 0 },
+    placesInput: {
+      height: 48,
+      backgroundColor: colors.surface,
+      borderRadius: 8,
+      paddingHorizontal: 16,
+      fontSize: 16,
+      color: colors.text,
+    },
+    placesList: { maxHeight: 150 },
+    noKeyHint: { fontSize: 12, color: colors.placeholder, padding: 8 },
+    mapContainer: { flex: 1, minHeight: 280, position: 'relative' },
+    map: { width: '100%', height: '100%' },
+    mapTypeBar: {
+      position: 'absolute',
+      top: 12,
+      right: 12,
+      flexDirection: 'column',
+      gap: 4,
+    },
+    mapTypeBtn: {
+      backgroundColor: mapChromeBg,
+      borderWidth: mapChromeBorderW,
+      borderColor: colors.border,
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 6,
+    },
+    mapTypeBtnActive: { backgroundColor: colors.primary, borderColor: colors.primary },
+    mapTypeText: { fontSize: 12, color: colors.text },
+    mapTypeTextActive: { color: colors.white, fontWeight: '600' },
+    zoomBar: {
+      position: 'absolute',
+      bottom: 12,
+      right: 12,
+      flexDirection: 'column',
+    },
+    zoomBtn: {
+      backgroundColor: mapChromeBg,
+      borderWidth: mapChromeBorderW,
+      borderColor: colors.border,
+      width: 40,
+      height: 40,
+      borderRadius: 6,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: 4,
+    },
+    zoomBtnText: { fontSize: 24, color: colors.text, fontWeight: '300', lineHeight: 28 },
+    selectedAddress: {
+      padding: 12,
+      fontSize: 14,
+      color: colors.text,
+      backgroundColor: colors.surface,
+    },
+    hint: { padding: 8, color: colors.textSecondary, fontSize: 13, textAlign: 'center' },
+    actions: { padding: 16, gap: 12 },
+    actionBtn: { padding: 16, borderRadius: 12, alignItems: 'center' },
+    useLocationBtn: { backgroundColor: colors.primaryLight },
+    useLocationText: { color: colors.primary, fontWeight: '600', fontSize: 16 },
+    confirmBtn: { backgroundColor: colors.primary },
+    confirmBtnText: { color: colors.white, fontWeight: '600', fontSize: 16 },
+    cancelBtn: { backgroundColor: colors.surface },
+    cancelBtnText: { color: colors.textSecondary, fontWeight: '600', fontSize: 16 },
+    btnDisabled: { opacity: 0.6 },
+  });
+}
+
 export default function MapLocationPicker({ visible, title, onSelect, onClose, initialUseMyLocation }) {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
   const [region, setRegion] = useState({
     ...JORDAN_CENTER,
     ...MAP_DELTA,
@@ -115,7 +206,6 @@ export default function MapLocationPicker({ visible, title, onSelect, onClose, i
       mapRef.current?.animateToRegion({ latitude: lat, longitude: lng, ...SELECT_LOCATION_DELTA }, 300);
     }
   };
-
 
   const handleConfirm = async () => {
     if (!marker) {
@@ -220,6 +310,7 @@ export default function MapLocationPicker({ visible, title, onSelect, onClose, i
             showsTraffic={showsTraffic}
             zoomEnabled
             pitchEnabled
+            customMapStyle={mapType === 'standard' && isDark ? googleMapDarkStyle : undefined}
           >
             {marker && (
               <Marker
@@ -302,81 +393,3 @@ export default function MapLocationPicker({ visible, title, onSelect, onClose, i
     </Modal>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingBottom: 12,
-    borderBottomWidth: 1,
-    borderBottomColor: colors.border,
-  },
-  title: { fontSize: 18, fontWeight: '600', flex: 1, marginRight: 8, color: colors.text },
-  closeBtnTouch: { padding: 8 },
-  closeBtn: { fontSize: 28, color: colors.textSecondary, lineHeight: 32 },
-  searchContainer: { paddingHorizontal: 12, paddingTop: 8 },
-  placesContainer: { flex: 0 },
-  placesInput: {
-    height: 48,
-    backgroundColor: colors.surface,
-    borderRadius: 8,
-    paddingHorizontal: 16,
-    fontSize: 16,
-    color: colors.text,
-  },
-  placesList: { maxHeight: 150 },
-  noKeyHint: { fontSize: 12, color: colors.placeholder, padding: 8 },
-  mapContainer: { flex: 1, minHeight: 280, position: 'relative' },
-  map: { width: '100%', height: '100%' },
-  mapTypeBar: {
-    position: 'absolute',
-    top: 12,
-    right: 12,
-    flexDirection: 'column',
-    gap: 4,
-  },
-  mapTypeBtn: {
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 6,
-  },
-  mapTypeBtnActive: { backgroundColor: colors.primary },
-  mapTypeText: { fontSize: 12, color: colors.text },
-  mapTypeTextActive: { color: colors.white, fontWeight: '600' },
-  zoomBar: {
-    position: 'absolute',
-    bottom: 12,
-    right: 12,
-    flexDirection: 'column',
-  },
-  zoomBtn: {
-    backgroundColor: 'rgba(255,255,255,0.95)',
-    width: 40,
-    height: 40,
-    borderRadius: 6,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 4,
-  },
-  zoomBtnText: { fontSize: 24, color: colors.text, fontWeight: '300', lineHeight: 28 },
-  selectedAddress: {
-    padding: 12,
-    fontSize: 14,
-    color: colors.text,
-    backgroundColor: colors.surface,
-  },
-  hint: { padding: 8, color: colors.textSecondary, fontSize: 13, textAlign: 'center' },
-  actions: { padding: 16, gap: 12 },
-  actionBtn: { padding: 16, borderRadius: 12, alignItems: 'center' },
-  useLocationBtn: { backgroundColor: colors.primaryLight },
-  useLocationText: { color: colors.primary, fontWeight: '600', fontSize: 16 },
-  confirmBtn: { backgroundColor: colors.primary },
-  confirmBtnText: { color: colors.white, fontWeight: '600', fontSize: 16 },
-  cancelBtn: { backgroundColor: colors.surface },
-  cancelBtnText: { color: colors.textSecondary, fontWeight: '600', fontSize: 16 },
-  btnDisabled: { opacity: 0.6 },
-});

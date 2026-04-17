@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -19,11 +19,17 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import i18n, { initI18n } from '../i18n';
-import { colors, ios } from '../theme';
+import { ios } from '../theme';
+import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import { supabase } from '../lib/supabase';
 import { getDriverOrders, postDriverOrderAction } from '../api';
 import { getRouteLabel, statusLabel, pickupSummary, destinationSummary, formatBookingDate } from '../utils/bookings';
 import { isDriverSubscriptionActive } from '../utils/driverSubscription';
+import { useFocusEffect } from '@react-navigation/native';
+
+const ACCENT_DONE = '#22C55E';
+const ACCENT_CANCEL = '#94A3B8';
 
 function nextActionForStatus(status) {
   const s = String(status || '').toLowerCase();
@@ -34,7 +40,10 @@ function nextActionForStatus(status) {
 }
 
 export default function DriverHomeScreen() {
-  const { accessToken, profile } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createDriverHomeStyles(colors), [colors]);
+  const { accessToken, profile, session } = useAuth();
+  const userId = session?.user?.id;
   const { width: windowWidth } = useWindowDimensions();
   const barMaxWidth = Math.min(windowWidth - 48, 400);
   const [locale, setLocale] = useState(i18n.locale);
@@ -46,6 +55,8 @@ export default function DriverHomeScreen() {
   const [actingId, setActingId] = useState(null);
   const [offerVisible, setOfferVisible] = useState(false);
   const [subscriptionOk, setSubscriptionOk] = useState(true);
+  const [pastRides, setPastRides] = useState([]);
+  const [pastErr, setPastErr] = useState(null);
   const progressAnim = useRef(new Animated.Value(1)).current;
   const animOfferId = useRef(null);
 
@@ -74,6 +85,33 @@ export default function DriverHomeScreen() {
       setSubscriptionOk(isDriverSubscriptionActive(profile?.driver_subscription_valid_until));
     }
   }, [accessToken, profile?.driver_subscription_valid_until]);
+
+  const loadPastRides = useCallback(async () => {
+    if (!userId) {
+      setPastRides([]);
+      return;
+    }
+    setPastErr(null);
+    const { data, error } = await supabase
+      .from('orders')
+      .select('id, route, scheduled_at, status, created_at, pickup, destination, passenger_name')
+      .eq('driver_id', userId)
+      .in('status', ['completed', 'cancelled'])
+      .order('created_at', { ascending: false })
+      .limit(40);
+    if (error) {
+      setPastErr(error.message);
+      setPastRides([]);
+      return;
+    }
+    setPastRides(data || []);
+  }, [userId]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadPastRides();
+    }, [loadPastRides])
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -125,8 +163,9 @@ export default function DriverHomeScreen() {
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     await load();
+    await loadPastRides();
     setRefreshing(false);
-  }, [load]);
+  }, [load, loadPastRides]);
 
   const respondOffer = async (accept) => {
     if (!incomingOffer) return;
@@ -233,9 +272,93 @@ export default function DriverHomeScreen() {
     outputRange: [0, barMaxWidth],
   });
 
+  const pastRidesFooter = useMemo(
+    () => (
+      <View style={styles.pastBlock}>
+        <View style={styles.pastSectionHead}>
+          <View style={styles.pastSectionHeadText}>
+            <Text style={styles.pastHeading}>{i18n.t('driver_past_rides')}</Text>
+            <Text style={styles.pastSub}>{i18n.t('driver_past_rides_sub')}</Text>
+          </View>
+        </View>
+        {pastErr ? (
+          <View style={styles.pastErrorCard}>
+            <Ionicons name="cloud-offline-outline" size={32} color={colors.error} />
+            <Text style={styles.pastErrorTitle}>{pastErr}</Text>
+            <TouchableOpacity style={styles.pastRetryBtn} onPress={loadPastRides} accessibilityRole="button">
+              <Text style={styles.pastRetryBtnText}>{i18n.t('driver_past_rides_retry')}</Text>
+            </TouchableOpacity>
+          </View>
+        ) : pastRides.length === 0 ? (
+          <View style={styles.pastEmptyCard} accessibilityRole="text">
+            <View style={styles.pastEmptyIconWrap}>
+              <Ionicons name="car-outline" size={40} color={colors.placeholder} />
+            </View>
+            <Text style={styles.pastEmptyTitle}>{i18n.t('driver_no_past_rides_title')}</Text>
+            <Text style={styles.pastEmptyBody}>{i18n.t('driver_no_past_rides')}</Text>
+          </View>
+        ) : (
+          pastRides.map((item) => {
+            const routeText = getRouteLabel(item.route);
+            const when = formatBookingDate(item.scheduled_at, locale);
+            const pickup = pickupSummary(item.pickup);
+            const dest = destinationSummary(item.destination);
+            const done = String(item.status).toLowerCase() === 'completed';
+            const borderColor = done ? ACCENT_DONE : ACCENT_CANCEL;
+            return (
+              <View
+                key={item.id}
+                style={[styles.pastRideCard, { borderLeftColor: borderColor }]}
+                accessibilityLabel={`${routeText}. ${statusLabel(item.status)}. ${when}`}
+              >
+                <View style={styles.pastRideTop}>
+                  <Text style={styles.pastRideRoute} numberOfLines={2}>
+                    {routeText}
+                  </Text>
+                  <View style={[styles.pastStatusPill, done ? styles.pastStatusPillDone : styles.pastStatusPillCancelled]}>
+                    <Text
+                      style={[
+                        styles.pastStatusPillText,
+                        done ? styles.pastStatusPillTextDone : styles.pastStatusPillTextCancelled,
+                      ]}
+                    >
+                      {statusLabel(item.status)}
+                    </Text>
+                  </View>
+                </View>
+                <View style={styles.pastWhenRow}>
+                  <Ionicons name="time-outline" size={16} color={colors.textSecondary} />
+                  <Text style={styles.pastRideWhen}>{when}</Text>
+                </View>
+                {pickup ? (
+                  <View style={styles.pastAddrRow}>
+                    <View style={styles.pastAddrDot} />
+                    <Text style={styles.pastRideAddr} numberOfLines={2}>
+                      {pickup}
+                    </Text>
+                  </View>
+                ) : null}
+                {dest ? (
+                  <View style={styles.pastAddrRow}>
+                    <View style={[styles.pastAddrDot, styles.pastAddrDotDest]} />
+                    <Text style={styles.pastRideAddr} numberOfLines={2}>
+                      {dest}
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            );
+          })
+        )}
+        <Text style={styles.pastPullHint}>{i18n.t('driver_pull_refresh_hint')}</Text>
+      </View>
+    ),
+    [pastErr, pastRides, locale, colors.error, colors.placeholder, colors.textSecondary, styles, loadPastRides]
+  );
+
   const header = (
     <View style={[styles.headerWrapper, Platform.OS !== 'ios' && styles.headerWrapperAndroid]}>
-      {Platform.OS === 'ios' ? <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} /> : null}
+      {Platform.OS === 'ios' ? <BlurView intensity={80} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} /> : null}
       <View style={styles.headerInner}>
         <Ionicons name="car-outline" size={26} color={colors.primary} style={{ marginRight: 10 }} />
         <Text style={styles.headerTitle}>{i18n.t('driver_section_title')}</Text>
@@ -279,6 +402,7 @@ export default function DriverHomeScreen() {
         keyExtractor={(item) => item.id}
         renderItem={renderOrder}
         renderSectionHeader={renderSectionHeader}
+        ListFooterComponent={pastRidesFooter}
         contentContainerStyle={styles.listContent}
         stickySectionHeadersEnabled={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
@@ -333,7 +457,8 @@ export default function DriverHomeScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createDriverHomeStyles(colors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   headerWrapper: {
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -374,7 +499,143 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   subBannerText: { flex: 1, color: colors.text, fontSize: 13, lineHeight: 18, fontWeight: '600' },
-  listContent: { paddingHorizontal: ios.spacing.lg, paddingBottom: 32 },
+  listContent: { paddingHorizontal: ios.spacing.lg, paddingBottom: 40 },
+  pastBlock: { paddingTop: 8 },
+  pastSectionHead: {
+    flexDirection: 'row',
+    alignItems: 'flex-end',
+    justifyContent: 'space-between',
+    marginTop: 20,
+    marginBottom: 12,
+  },
+  pastSectionHeadText: { flex: 1 },
+  pastHeading: {
+    fontSize: ios.fontSize.title3,
+    fontWeight: '800',
+    color: colors.text,
+    letterSpacing: -0.2,
+  },
+  pastSub: {
+    fontSize: ios.fontSize.footnote,
+    color: colors.placeholder,
+    marginTop: 4,
+    fontWeight: '500',
+  },
+  pastErrorCard: {
+    backgroundColor: colors.surface,
+    borderRadius: ios.radius.xl,
+    padding: ios.spacing.xl,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  pastErrorTitle: {
+    marginTop: 12,
+    fontSize: ios.fontSize.subhead,
+    color: colors.text,
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  pastRetryBtn: {
+    marginTop: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    backgroundColor: colors.primaryLight,
+    borderRadius: ios.radius.md,
+  },
+  pastRetryBtnText: { color: colors.primaryDark, fontWeight: '800', fontSize: ios.fontSize.callout },
+  pastEmptyCard: {
+    backgroundColor: colors.surface,
+    borderRadius: ios.radius.xl,
+    padding: ios.spacing.xxl,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  pastEmptyIconWrap: {
+    width: 72,
+    height: 72,
+    borderRadius: 36,
+    backgroundColor: colors.background,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 12,
+  },
+  pastEmptyTitle: {
+    fontSize: ios.fontSize.title3,
+    fontWeight: '800',
+    color: colors.text,
+    textAlign: 'center',
+  },
+  pastEmptyBody: {
+    marginTop: 8,
+    fontSize: ios.fontSize.subhead,
+    color: colors.placeholder,
+    textAlign: 'center',
+    lineHeight: 22,
+    maxWidth: 300,
+  },
+  pastRideCard: {
+    backgroundColor: colors.surface,
+    borderRadius: ios.radius.lg,
+    padding: ios.spacing.md,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderLeftWidth: 4,
+  },
+  pastRideTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  pastRideRoute: {
+    flex: 1,
+    fontSize: ios.fontSize.callout,
+    fontWeight: '800',
+    color: colors.text,
+    marginRight: 10,
+    lineHeight: 22,
+  },
+  pastStatusPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 12,
+    maxWidth: '42%',
+  },
+  pastStatusPillDone: { backgroundColor: 'rgba(34, 197, 94, 0.12)' },
+  pastStatusPillCancelled: { backgroundColor: colors.metallic },
+  pastStatusPillText: { fontSize: 11, fontWeight: '800', textAlign: 'center' },
+  pastStatusPillTextDone: { color: '#15803D' },
+  pastStatusPillTextCancelled: { color: colors.placeholder },
+  pastWhenRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
+  pastRideWhen: {
+    marginLeft: 6,
+    fontSize: ios.fontSize.footnote,
+    color: colors.textSecondary,
+    fontWeight: '600',
+  },
+  pastAddrRow: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 8 },
+  pastAddrDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.primary,
+    marginTop: 6,
+    marginRight: 10,
+  },
+  pastAddrDotDest: { backgroundColor: colors.primaryDark },
+  pastRideAddr: {
+    flex: 1,
+    fontSize: ios.fontSize.footnote,
+    color: colors.text,
+    lineHeight: 20,
+    fontWeight: '500',
+  },
+  pastPullHint: {
+    textAlign: 'center',
+    fontSize: 12,
+    color: colors.placeholder,
+    marginTop: 16,
+    marginBottom: 8,
+    fontWeight: '500',
+  },
   sectionHeader: { paddingTop: 16, paddingBottom: 8 },
   sectionTitle: {
     fontSize: 13,
@@ -496,3 +757,4 @@ const styles = StyleSheet.create({
   },
   acceptBtnText: { fontWeight: '700', color: colors.white, fontSize: 16 },
 });
+}

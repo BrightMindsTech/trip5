@@ -16,12 +16,12 @@ import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import i18n, { initI18n } from '../i18n';
-import { colors, ios } from '../theme';
+import { ios } from '../theme';
+import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
 import { Config } from '../config';
 import { isDriverSubscriptionActive } from '../utils/driverSubscription';
-import { getRouteLabel, statusLabel, pickupSummary, destinationSummary, formatBookingDate } from '../utils/bookings';
 import { useFocusEffect } from '@react-navigation/native';
 
 const ACCENT_DONE = '#22C55E';
@@ -66,13 +66,14 @@ const cardShadow =
     : { elevation: 3 };
 
 export default function DriverDashboardScreen() {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createDriverDashboardStyles(colors), [colors]);
   const { session, profile, loadProfile } = useAuth();
   const userId = session?.user?.id;
   const [locale, setLocale] = useState(i18n.locale);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [pastRides, setPastRides] = useState([]);
-  const [loadErr, setLoadErr] = useState(null);
+  const [completedCount, setCompletedCount] = useState(0);
 
   const subActive = isDriverSubscriptionActive(profile?.driver_subscription_valid_until);
   const score = profile?.driver_score != null && !Number.isNaN(Number(profile.driver_score)) ? Number(profile.driver_score) : null;
@@ -86,26 +87,21 @@ export default function DriverDashboardScreen() {
     Linking.openURL(`https://wa.me/${contactDigits}?text=${text}`).catch(() => {});
   }, [contactDigits]);
 
-  const loadPastRides = useCallback(async () => {
+  const loadCompletedCount = useCallback(async () => {
     if (!userId) {
-      setPastRides([]);
+      setCompletedCount(0);
       return;
     }
-    setLoadErr(null);
-    const { data, error } = await supabase
+    const { count, error } = await supabase
       .from('orders')
-      .select('id, route, scheduled_at, status, created_at, pickup, destination, passenger_name')
+      .select('*', { count: 'exact', head: true })
       .eq('driver_id', userId)
-      .in('status', ['completed', 'cancelled'])
-      .order('created_at', { ascending: false })
-      .limit(40);
-
+      .eq('status', 'completed');
     if (error) {
-      setLoadErr(error.message);
-      setPastRides([]);
+      setCompletedCount(0);
       return;
     }
-    setPastRides(data || []);
+    setCompletedCount(count ?? 0);
   }, [userId]);
 
   useEffect(() => {
@@ -144,21 +140,19 @@ export default function DriverDashboardScreen() {
       return;
     }
     setLoading(true);
-    loadPastRides().finally(() => setLoading(false));
-  }, [userId, loadPastRides]);
+    loadCompletedCount().finally(() => setLoading(false));
+  }, [userId, loadCompletedCount]);
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
     if (userId) await loadProfile(userId, { silent: true });
-    await loadPastRides();
+    await loadCompletedCount();
     setRefreshing(false);
-  }, [userId, loadProfile, loadPastRides]);
-
-  const completedCount = pastRides.filter((r) => String(r.status).toLowerCase() === 'completed').length;
+  }, [userId, loadProfile, loadCompletedCount]);
 
   const header = (
     <View style={[styles.headerWrapper, Platform.OS !== 'ios' && styles.headerWrapperAndroid]}>
-      {Platform.OS === 'ios' ? <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} /> : null}
+      {Platform.OS === 'ios' ? <BlurView intensity={80} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} /> : null}
       <View style={styles.headerInner}>
         <Text style={styles.headerTitle}>{i18n.t('driver_dashboard_title')}</Text>
       </View>
@@ -278,85 +272,14 @@ export default function DriverDashboardScreen() {
           ) : null}
         </View>
 
-        <View style={styles.sectionHead}>
-          <View style={styles.sectionHeadText}>
-            <Text style={styles.sectionHeading}>{i18n.t('driver_past_rides')}</Text>
-            <Text style={styles.sectionSub}>{i18n.t('driver_past_rides_sub')}</Text>
-          </View>
-        </View>
-
-        {loadErr ? (
-          <View style={[styles.errorCard, cardShadow]}>
-            <Ionicons name="cloud-offline-outline" size={32} color={colors.error} />
-            <Text style={styles.errorTitle}>{loadErr}</Text>
-            <TouchableOpacity style={styles.retryBtn} onPress={loadPastRides} accessibilityRole="button">
-              <Text style={styles.retryBtnText}>{i18n.t('driver_past_rides_retry')}</Text>
-            </TouchableOpacity>
-          </View>
-        ) : pastRides.length === 0 ? (
-          <View style={[styles.emptyCard, cardShadow]} accessibilityRole="text">
-            <View style={styles.emptyIconWrap}>
-              <Ionicons name="car-outline" size={40} color={colors.placeholder} />
-            </View>
-            <Text style={styles.emptyTitle}>{i18n.t('driver_no_past_rides_title')}</Text>
-            <Text style={styles.emptyBody}>{i18n.t('driver_no_past_rides')}</Text>
-          </View>
-        ) : (
-          pastRides.map((item) => {
-            const routeText = getRouteLabel(item.route);
-            const when = formatBookingDate(item.scheduled_at, locale);
-            const pickup = pickupSummary(item.pickup);
-            const dest = destinationSummary(item.destination);
-            const done = String(item.status).toLowerCase() === 'completed';
-            const borderColor = done ? ACCENT_DONE : ACCENT_CANCEL;
-            return (
-              <View
-                key={item.id}
-                style={[styles.rideCard, cardShadow, { borderLeftColor: borderColor }]}
-                accessibilityLabel={`${routeText}. ${statusLabel(item.status)}. ${when}`}
-              >
-                <View style={styles.rideTop}>
-                  <Text style={styles.rideRoute} numberOfLines={2}>
-                    {routeText}
-                  </Text>
-                  <View style={[styles.statusPill, done ? styles.statusPillDone : styles.statusPillCancelled]}>
-                    <Text style={[styles.statusPillText, done ? styles.statusPillTextDone : styles.statusPillTextCancelled]}>
-                      {statusLabel(item.status)}
-                    </Text>
-                  </View>
-                </View>
-                <View style={styles.whenRow}>
-                  <Ionicons name="time-outline" size={16} color={colors.textSecondary} />
-                  <Text style={styles.rideWhen}>{when}</Text>
-                </View>
-                {pickup ? (
-                  <View style={styles.addrRow}>
-                    <View style={styles.addrDot} />
-                    <Text style={styles.rideAddr} numberOfLines={2}>
-                      {pickup}
-                    </Text>
-                  </View>
-                ) : null}
-                {dest ? (
-                  <View style={styles.addrRow}>
-                    <View style={[styles.addrDot, styles.addrDotDest]} />
-                    <Text style={styles.rideAddr} numberOfLines={2}>
-                      {dest}
-                    </Text>
-                  </View>
-                ) : null}
-              </View>
-            );
-          })
-        )}
-
         <Text style={styles.footerHint}>{i18n.t('driver_pull_refresh_hint')}</Text>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
-const styles = StyleSheet.create({
+function createDriverDashboardStyles(colors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   headerWrapper: {
     borderBottomWidth: StyleSheet.hairlineWidth,
@@ -505,119 +428,6 @@ const styles = StyleSheet.create({
   },
   subCtaIcon: { marginEnd: 10 },
   subCtaText: { color: colors.white, fontWeight: '800', fontSize: ios.fontSize.callout, flex: 1, textAlign: 'center' },
-  sectionHead: {
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    paddingHorizontal: ios.spacing.lg,
-    marginTop: 28,
-    marginBottom: 12,
-  },
-  sectionHeadText: { flex: 1 },
-  sectionHeading: {
-    fontSize: ios.fontSize.title3,
-    fontWeight: '800',
-    color: colors.text,
-    letterSpacing: -0.2,
-  },
-  sectionSub: {
-    fontSize: ios.fontSize.footnote,
-    color: colors.placeholder,
-    marginTop: 4,
-    fontWeight: '500',
-  },
-  errorCard: {
-    marginHorizontal: ios.spacing.lg,
-    backgroundColor: colors.surface,
-    borderRadius: ios.radius.xl,
-    padding: ios.spacing.xl,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  errorTitle: {
-    marginTop: 12,
-    fontSize: ios.fontSize.subhead,
-    color: colors.text,
-    textAlign: 'center',
-    lineHeight: 22,
-  },
-  retryBtn: {
-    marginTop: 16,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    backgroundColor: colors.primaryLight,
-    borderRadius: ios.radius.md,
-  },
-  retryBtnText: { color: colors.primaryDark, fontWeight: '800', fontSize: ios.fontSize.callout },
-  emptyCard: {
-    marginHorizontal: ios.spacing.lg,
-    backgroundColor: colors.surface,
-    borderRadius: ios.radius.xl,
-    padding: ios.spacing.xxl,
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  emptyIconWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
-    backgroundColor: colors.background,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: 12,
-  },
-  emptyTitle: {
-    fontSize: ios.fontSize.title3,
-    fontWeight: '800',
-    color: colors.text,
-    textAlign: 'center',
-  },
-  emptyBody: {
-    marginTop: 8,
-    fontSize: ios.fontSize.subhead,
-    color: colors.placeholder,
-    textAlign: 'center',
-    lineHeight: 22,
-    maxWidth: 300,
-  },
-  rideCard: {
-    marginHorizontal: ios.spacing.lg,
-    backgroundColor: colors.surface,
-    borderRadius: ios.radius.lg,
-    padding: ios.spacing.md,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderLeftWidth: 4,
-  },
-  rideTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  rideRoute: { flex: 1, fontSize: ios.fontSize.callout, fontWeight: '800', color: colors.text, marginRight: 10, lineHeight: 22 },
-  statusPill: {
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 12,
-    maxWidth: '42%',
-  },
-  statusPillDone: { backgroundColor: 'rgba(34, 197, 94, 0.12)' },
-  statusPillCancelled: { backgroundColor: colors.metallic },
-  statusPillText: { fontSize: 11, fontWeight: '800', textAlign: 'center' },
-  statusPillTextDone: { color: '#15803D' },
-  statusPillTextCancelled: { color: colors.placeholder },
-  whenRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
-  rideWhen: { marginLeft: 6, fontSize: ios.fontSize.footnote, color: colors.textSecondary, fontWeight: '600' },
-  addrRow: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 8 },
-  addrDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.primary,
-    marginTop: 6,
-    marginRight: 10,
-  },
-  addrDotDest: { backgroundColor: colors.primaryDark },
-  rideAddr: { flex: 1, fontSize: ios.fontSize.footnote, color: colors.text, lineHeight: 20, fontWeight: '500' },
   footerHint: {
     textAlign: 'center',
     fontSize: 12,
@@ -627,3 +437,4 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
 });
+}

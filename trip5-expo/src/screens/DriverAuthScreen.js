@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -11,13 +11,15 @@ import {
   ActivityIndicator,
   Alert,
   Linking,
+  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../context/AuthContext';
 import { Config } from '../config';
-import { colors, ios } from '../theme';
+import { ios } from '../theme';
+import { useTheme } from '../context/ThemeContext';
 import i18n from '../i18n';
 import LanguageToggle from '../components/LanguageToggle';
 import { isValidJordanPhone } from '../utils/phoneAuth';
@@ -33,6 +35,15 @@ function formatContactForDisplay(phone) {
 }
 
 export default function DriverAuthScreen({ onBack }) {
+  const { colors, isDark, setPreference } = useTheme();
+  const styles = useMemo(() => createDriverAuthStyles(colors, isDark), [colors, isDark]);
+  const heroGradientColors = useMemo(
+    () =>
+      isDark
+        ? [colors.primaryLight, colors.background, colors.background]
+        : ['#EEF2FF', colors.background, colors.background],
+    [isDark, colors.background, colors.primaryLight]
+  );
   const { signIn } = useAuth();
   const [step, setStep] = useState('menu');
   const [password, setPassword] = useState('');
@@ -48,6 +59,10 @@ export default function DriverAuthScreen({ onBack }) {
   const refreshLocale = useCallback(() => {
     setLocaleTick((n) => n + 1);
   }, []);
+
+  const onToggleTheme = useCallback(() => {
+    setPreference(isDark ? 'light' : 'dark');
+  }, [isDark, setPreference]);
 
   const openCall = () => {
     Linking.openURL(`tel:+${contactDigits}`).catch(() => {});
@@ -79,7 +94,7 @@ export default function DriverAuthScreen({ onBack }) {
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       <LinearGradient
-        colors={['#EEF2FF', colors.background, colors.background]}
+        colors={heroGradientColors}
         locations={[0, 0.35, 1]}
         style={styles.gradient}
       >
@@ -186,7 +201,24 @@ export default function DriverAuthScreen({ onBack }) {
 
             <View style={styles.footerBar}>
               <View style={{ width: 40 }} />
-              <LanguageToggle onToggle={refreshLocale} buttonStyle={styles.langBtn} textStyle={styles.langBtnText} />
+              <View style={styles.footerRight}>
+                <Pressable
+                  onPress={onToggleTheme}
+                  style={({ pressed }) => [styles.themeToggle, pressed && styles.themeTogglePressed]}
+                  accessibilityRole="button"
+                  accessibilityLabel={
+                    isDark ? i18n.t('auth_toggle_theme_to_light_a11y') : i18n.t('auth_toggle_theme_to_dark_a11y')
+                  }
+                  hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                >
+                  <Ionicons
+                    name={isDark ? 'sunny-outline' : 'moon-outline'}
+                    size={22}
+                    color={colors.primary}
+                  />
+                </Pressable>
+                <LanguageToggle onToggle={refreshLocale} buttonStyle={styles.langBtn} textStyle={styles.langBtnText} />
+              </View>
             </View>
           </ScrollView>
         </KeyboardAvoidingView>
@@ -195,7 +227,8 @@ export default function DriverAuthScreen({ onBack }) {
   );
 }
 
-const styles = StyleSheet.create({
+function createDriverAuthStyles(colors, isDark) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   gradient: { flex: 1 },
   flex: { flex: 1 },
@@ -225,7 +258,7 @@ const styles = StyleSheet.create({
   },
   heroSub: {
     fontSize: ios.fontSize.subhead,
-    color: colors.placeholder,
+    color: colors.textSecondary,
     lineHeight: 22,
     marginBottom: ios.spacing.xl,
   },
@@ -351,9 +384,25 @@ const styles = StyleSheet.create({
   footerBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'flex-end',
+    justifyContent: 'space-between',
     paddingTop: ios.spacing.xl,
   },
+  footerRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: ios.spacing.sm,
+  },
+  themeToggle: {
+    width: ios.minTouchTarget,
+    height: ios.minTouchTarget,
+    borderRadius: ios.minTouchTarget / 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : colors.primaryLight,
+    borderWidth: 1,
+    borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : colors.border,
+  },
+  themeTogglePressed: { opacity: 0.75 },
   langBtn: {
     backgroundColor: colors.surface,
     borderColor: colors.border,
@@ -361,3 +410,4 @@ const styles = StyleSheet.create({
   },
   langBtnText: { color: colors.primary },
 });
+}

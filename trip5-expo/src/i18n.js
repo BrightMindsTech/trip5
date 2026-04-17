@@ -75,7 +75,12 @@ const en = {
   order_summary: 'Order summary',
   submit_order: 'Submit Order',
   order_sent: 'Order sent!',
+  booking_reference_label: 'Ref: {{code}}',
+  booking_reference_support_hint: 'Quote this reference when you contact support.',
   order_sent_desc: 'The owner will contact you shortly.',
+  order_dispatch_ok_sub: 'A driver is being notified now. Check the driver app for the incoming offer.',
+  order_dispatch_no_offer:
+    'Your request was saved, but no driver could be notified automatically. Ensure at least one driver has is_driver enabled and an active subscription (driver_subscription_valid_until), then try again or open Activity.',
   new_order: 'New Order',
   step: 'Step',
   step_of: '%1 of %2',
@@ -133,6 +138,9 @@ const en = {
   auth_welcome_title_signup: 'Create your Trip5 account',
   auth_welcome_sub_signup: 'Add your name and phone to start booking rides between Amman, Irbid, and the airport.',
   auth_placeholder_password: 'Enter password',
+  auth_phone_placeholder: '7X XXX XXXX',
+  auth_forgot_password: 'Forgot?',
+  auth_forgot_password_hint: 'Contact support to reset your password.',
   auth_footer_no_account: "Don't have an account? ",
   auth_footer_create: 'Create one',
   auth_footer_have_account: 'Already have an account? ',
@@ -152,6 +160,8 @@ const en = {
   driver_auth_login_title: 'Driver log in',
   driver_auth_login_sub: 'Use the phone number and password for your driver account.',
   auth_help: 'HELP',
+  auth_toggle_theme_to_dark_a11y: 'Dark mode',
+  auth_toggle_theme_to_light_a11y: 'Light mode',
   auth_legal_prefix: "By continuing, you agree to Trip5's ",
   auth_legal_terms: 'Terms of Service',
   auth_legal_and: ' and ',
@@ -165,6 +175,7 @@ const en = {
   map_tap_hint: 'Tap the map or search to set the selected stop (pickup or drop-off).',
   search_pickup_short: 'Where to pick you up?',
   search_dropoff_short: 'Where to drop off?',
+  map_hide_keyboard: 'Hide keyboard',
   tap_map_or_search: 'Tap map or search below',
   search_places: 'Search places',
   error_location_outside_jordan: 'Please choose a location inside Jordan.',
@@ -242,6 +253,7 @@ const en = {
   service_intercity_title: 'Intercity',
   service_intercity_sub: 'Long distance',
   dashboard_ongoing_trip: 'Ongoing trip',
+  dashboard_message_driver: 'Message driver',
   saved_places_title: 'Saved places',
   saved_places_see_all: 'See all',
   saved_places_screen_title: 'Saved places',
@@ -282,6 +294,26 @@ const en = {
   trip_tracking_in_transit_only_hint:
     'Live map follow along the route is available while your trip is in transit.',
   trip_tracking_trip_closed: 'This trip has ended or was cancelled.',
+  trip_tracking_chat_hint: 'Open chat to message your driver.',
+  trip_chat_expand: 'Expand chat',
+  trip_chat_collapse: 'Collapse chat',
+  trip_chat_closed: 'Chat is closed for this trip.',
+  trip_chat_placeholder: 'Message…',
+  trip_chat_image_placeholder: '[Photo]',
+  rider_driver_vehicle_title: "Your driver's car",
+  rider_driver_vehicle_short_label: 'Vehicle',
+  rider_driver_vehicle_pending_short: 'details not added yet',
+  rider_driver_vehicle_type: 'Type',
+  rider_driver_vehicle_color: 'Color',
+  rider_driver_vehicle_pending: 'Your driver has not added vehicle details yet.',
+  driver_score_ratings_count: '%{count} ratings',
+  driver_score_rating_singular: '1 rating',
+  rider_cancel_trip: 'Cancel ride',
+  rider_cancel_trip_confirm_title: 'Cancel this ride?',
+  rider_cancel_trip_confirm_body: 'Your current trip request will be cancelled.',
+  rider_cancel_trip_success: 'Your ride was cancelled.',
+  rider_cancel_trip_error: 'Could not cancel this ride right now.',
+  activity_live_map: 'Live map',
   notifications_a11y: 'Notifications',
   notifications_placeholder_body: 'No notifications yet.',
   activity_title: 'Activity',
@@ -290,6 +322,11 @@ const en = {
   account_title: 'Account',
   account_wallet_hint: 'Balance & payments',
   account_language: 'Language',
+  account_appearance: 'Appearance',
+  theme_auto: 'Auto (Jordan time)',
+  theme_light: 'Light',
+  theme_dark: 'Dark',
+  account_theme_hint: 'Auto: dark from 6 PM to 6 AM, Jordan time.',
   driver_section_title: 'Driver',
   driver_available: 'Available',
   driver_my_jobs: 'My jobs',
@@ -405,7 +442,12 @@ const ar = {
   order_summary: 'ملخص الطلب',
   submit_order: 'إرسال الطلب',
   order_sent: 'تم إرسال الطلب!',
+  booking_reference_label: 'المرجع: {{code}}',
+  booking_reference_support_hint: 'اذكر هذا المرجع عند التواصل مع الدعم.',
   order_sent_desc: 'سيتواصل معك صاحب الخدمة قريباً.',
+  order_dispatch_ok_sub: 'جاري إشعار سائق الآن. تحقق من تطبيق السائق لطلب الوارد.',
+  order_dispatch_no_offer:
+    'تم حفظ طلبك، لكن لم يُعثر على سائق للإشعار تلقائياً. تأكد أن حساب سائق مفعّل (is_driver) واشتراكه ساري (driver_subscription_valid_until)، ثم أعد المحاولة أو راجع النشاط.',
   new_order: 'طلب جديد',
   step: 'خطوة',
   step_of: '%1 من %2',
@@ -463,6 +505,9 @@ const ar = {
   auth_welcome_title_signup: 'أنشئ حساب Trip5',
   auth_welcome_sub_signup: 'أدخل اسمك ورقم هاتفك لبدء حجز الرحلات بين عمّان وإربد والمطار.',
   auth_placeholder_password: 'أدخل كلمة المرور',
+  auth_phone_placeholder: '7X XXX XXXX',
+  auth_forgot_password: 'نسيت؟',
+  auth_forgot_password_hint: 'تواصل مع الدعم لإعادة تعيين كلمة المرور.',
   auth_footer_no_account: 'ليس لديك حساب؟ ',
   auth_footer_create: 'أنشئ حساباً',
   auth_footer_have_account: 'لديك حساب؟ ',
@@ -482,6 +527,8 @@ const ar = {
   driver_auth_login_title: 'دخول السائق',
   driver_auth_login_sub: 'استخدم رقم الهاتف وكلمة المرور لحساب السائق.',
   auth_help: 'مساعدة',
+  auth_toggle_theme_to_dark_a11y: 'الوضع الداكن',
+  auth_toggle_theme_to_light_a11y: 'الوضع الفاتح',
   auth_legal_prefix: 'بالمتابعة، أنت توافق على ',
   auth_legal_terms: 'شروط الخدمة',
   auth_legal_and: ' و',
@@ -495,6 +542,7 @@ const ar = {
   map_tap_hint: 'اضغط على الخريطة أو ابحث لتعيين المحطة (انطلاق أو وصول).',
   search_pickup_short: 'من أين نقلك؟',
   search_dropoff_short: 'إلى أين نوصلك؟',
+  map_hide_keyboard: 'إخفاء لوحة المفاتيح',
   tap_map_or_search: 'اضغط الخريطة أو ابحث أدناه',
   search_places: 'ابحث عن الأماكن',
   error_location_outside_jordan: 'يرجى اختيار موقع داخل الأردن.',
@@ -572,6 +620,7 @@ const ar = {
   service_intercity_title: 'بين المدن',
   service_intercity_sub: 'مسافات أطول',
   dashboard_ongoing_trip: 'رحلة جارية',
+  dashboard_message_driver: 'مراسلة السائق',
   saved_places_title: 'أماكن محفوظة',
   saved_places_see_all: 'الكل',
   saved_places_screen_title: 'أماكن محفوظة',
@@ -612,6 +661,26 @@ const ar = {
   trip_tracking_in_transit_only_hint:
     'متابعة الخريطة المباشرة على المسار متاحة أثناء كون حالة الرحلة «في الرحلة».',
   trip_tracking_trip_closed: 'انتهت هذه الرحلة أو أُلغيت.',
+  trip_tracking_chat_hint: 'افتح المحادثة لمراسلة السائق.',
+  trip_chat_expand: 'توسيع المحادثة',
+  trip_chat_collapse: 'طي المحادثة',
+  trip_chat_closed: 'المحادثة مغلقة لهذه الرحلة.',
+  trip_chat_placeholder: 'رسالة…',
+  trip_chat_image_placeholder: '[صورة]',
+  rider_driver_vehicle_title: 'مركبة السائق',
+  rider_driver_vehicle_short_label: 'المركبة',
+  rider_driver_vehicle_pending_short: 'لم تُضف بعد',
+  rider_driver_vehicle_type: 'النوع',
+  rider_driver_vehicle_color: 'اللون',
+  rider_driver_vehicle_pending: 'لم يُضِف السائق تفاصيل المركبة بعد.',
+  driver_score_ratings_count: '%{count} تقييم',
+  driver_score_rating_singular: 'تقييم واحد',
+  rider_cancel_trip: 'إلغاء الرحلة',
+  rider_cancel_trip_confirm_title: 'إلغاء هذه الرحلة؟',
+  rider_cancel_trip_confirm_body: 'سيتم إلغاء طلب الرحلة الحالي.',
+  rider_cancel_trip_success: 'تم إلغاء رحلتك.',
+  rider_cancel_trip_error: 'تعذر إلغاء الرحلة حالياً.',
+  activity_live_map: 'خريطة مباشرة',
   notifications_a11y: 'الإشعارات',
   notifications_placeholder_body: 'لا توجد إشعارات بعد.',
   activity_title: 'النشاط',
@@ -620,6 +689,11 @@ const ar = {
   account_title: 'الحساب',
   account_wallet_hint: 'الرصيد والمدفوعات',
   account_language: 'اللغة',
+  account_appearance: 'المظهر',
+  theme_auto: 'تلقائي (توقيت الأردن)',
+  theme_light: 'فاتح',
+  theme_dark: 'داكن',
+  account_theme_hint: 'تلقائي: الوضع الداكن من ٦ مساءً إلى ٦ صباحاً بتوقيت الأردن.',
   driver_section_title: 'السائق',
   driver_available: 'طلبات متاحة',
   driver_my_jobs: 'مهامي',
@@ -671,11 +745,21 @@ const ar = {
 const translations = { en, ar };
 let currentLocale = 'ar';
 
+function applyParams(str, params) {
+  if (!params || typeof str !== 'string') return str;
+  let out = str;
+  for (const [k, v] of Object.entries(params)) {
+    out = out.split(`{{${k}}}`).join(String(v));
+  }
+  return out;
+}
+
 const i18n = {
   locale: 'ar',
-  t: (key) => {
+  t: (key, params) => {
     const t = translations[currentLocale] || translations.ar;
-    return t[key] || translations.en[key] || key;
+    const raw = t[key] || translations.en[key] || key;
+    return applyParams(raw, params);
   },
 };
 

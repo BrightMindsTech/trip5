@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,54 @@ import {
   ActivityIndicator,
 } from 'react-native';
 import i18n from '../i18n';
-import { colors } from '../theme';
+import { useTheme } from '../context/ThemeContext';
+
+function createConfirmationStyles(colors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    content: { padding: 24, paddingTop: 48, paddingBottom: 48 },
+    title: { fontSize: 22, fontWeight: '600', marginBottom: 24, color: colors.text },
+    row: {
+      backgroundColor: colors.primaryLight,
+      padding: 16,
+      borderRadius: 8,
+      marginBottom: 12,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    rowLabel: { fontSize: 12, color: colors.textSecondary, marginBottom: 4 },
+    rowValue: { fontSize: 16, color: colors.text },
+    errorBox: { backgroundColor: colors.errorBg, padding: 12, borderRadius: 8, marginBottom: 16 },
+    error: { color: colors.error, fontSize: 14 },
+    button: {
+      backgroundColor: colors.primary,
+      padding: 16,
+      borderRadius: 12,
+      marginTop: 16,
+      alignItems: 'center',
+    },
+    buttonDisabled: { opacity: 0.7 },
+    buttonText: { color: colors.white, fontSize: 18, fontWeight: '600' },
+    successIcon: { fontSize: 64, color: colors.primary, textAlign: 'center', marginTop: 80 },
+    successTitle: { fontSize: 24, fontWeight: '600', textAlign: 'center', marginTop: 24, color: colors.text },
+    successDesc: {
+      fontSize: 16,
+      color: colors.textSecondary,
+      textAlign: 'center',
+      marginTop: 12,
+      paddingHorizontal: 24,
+    },
+  });
+}
+
+function SummaryRow({ label, value, styles }) {
+  return (
+    <View style={styles.row}>
+      <Text style={styles.rowLabel}>{label}</Text>
+      <Text style={styles.rowValue}>{value}</Text>
+    </View>
+  );
+}
 
 export default function ConfirmationScreen({
   order,
@@ -20,6 +67,9 @@ export default function ConfirmationScreen({
   orderSent,
   resetOrder,
 }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createConfirmationStyles(colors), [colors]);
+
   if (orderSent) {
     return (
       <View style={styles.container}>
@@ -59,16 +109,17 @@ export default function ConfirmationScreen({
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>{i18n.t('order_summary')}</Text>
-      <SummaryRow label="Route" value={routeText} />
+      <SummaryRow label="Route" value={routeText} styles={styles} />
       <SummaryRow
         label="Date & Time"
         value={`${orderDate.toLocaleDateString()} ${orderDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+        styles={styles}
       />
-      <SummaryRow label="Service" value={serviceText} />
-      <SummaryRow label={i18n.t('pickup_location')} value={order.pickup?.address || ''} />
-      <SummaryRow label={i18n.t('destination')} value={order.destination?.address || ''} />
-      <SummaryRow label={i18n.t('full_name')} value={order.fullName} />
-      <SummaryRow label={i18n.t('phone_number')} value={order.phoneNumber} />
+      <SummaryRow label="Service" value={serviceText} styles={styles} />
+      <SummaryRow label={i18n.t('pickup_location')} value={order.pickup?.address || ''} styles={styles} />
+      <SummaryRow label={i18n.t('destination')} value={order.destination?.address || ''} styles={styles} />
+      <SummaryRow label={i18n.t('full_name')} value={order.fullName} styles={styles} />
+      <SummaryRow label={i18n.t('phone_number')} value={order.phoneNumber} styles={styles} />
 
       {submitError && (
         <View style={styles.errorBox}>
@@ -90,48 +141,3 @@ export default function ConfirmationScreen({
     </ScrollView>
   );
 }
-
-function SummaryRow({ label, value }) {
-  return (
-    <View style={styles.row}>
-      <Text style={styles.rowLabel}>{label}</Text>
-      <Text style={styles.rowValue}>{value}</Text>
-    </View>
-  );
-}
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: 24, paddingTop: 48, paddingBottom: 48 },
-  title: { fontSize: 22, fontWeight: '600', marginBottom: 24, color: colors.text },
-  row: {
-    backgroundColor: colors.primaryLight,
-    padding: 16,
-    borderRadius: 8,
-    marginBottom: 12,
-    borderWidth: 1,
-    borderColor: colors.border,
-  },
-  rowLabel: { fontSize: 12, color: colors.textSecondary, marginBottom: 4 },
-  rowValue: { fontSize: 16, color: colors.text },
-  errorBox: { backgroundColor: colors.errorBg, padding: 12, borderRadius: 8, marginBottom: 16 },
-  error: { color: colors.error, fontSize: 14 },
-  button: {
-    backgroundColor: colors.primary,
-    padding: 16,
-    borderRadius: 12,
-    marginTop: 16,
-    alignItems: 'center',
-  },
-  buttonDisabled: { opacity: 0.7 },
-  buttonText: { color: colors.white, fontSize: 18, fontWeight: '600' },
-  successIcon: { fontSize: 64, color: colors.primary, textAlign: 'center', marginTop: 80 },
-  successTitle: { fontSize: 24, fontWeight: '600', textAlign: 'center', marginTop: 24, color: colors.text },
-  successDesc: {
-    fontSize: 16,
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginTop: 12,
-    paddingHorizontal: 24,
-  },
-});

@@ -1,6 +1,11 @@
 # Supabase (Trip5)
 
-SQL migrations live in `trip5-expo/supabase/migrations/` (copy or run from repo root as needed).
+SQL migrations are split into two folders; apply **both** in order when provisioning a database:
+
+1. **`trip5-expo/supabase/migrations/`** — `001` … `005` (base profiles, orders, saved places, realtime, drivers, offers, subscription).
+2. **`supabase/migrations/`** (this directory) — `006` … `009` (trip reference, driver vehicle + rider-read policy, `trip_messages`, `cancel_my_trip` RPC).
+
+See **`APP_DB_CONTRACT.md`** in this folder for the full app ↔ DB inventory and reconciliation checklist.
 
 ## Edge Functions (option B — replaces Node `/api/*` for the app)
 

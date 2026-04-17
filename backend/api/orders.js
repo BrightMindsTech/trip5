@@ -125,21 +125,30 @@ export default async function handler(req, res) {
     status: 'pending',
   };
 
-  const { data: inserted, error: insertErr } = await supabase.from('orders').insert(row).select('id').single();
+  const { data: inserted, error: insertErr } = await supabase.from('orders').insert(row).select('id, trip_reference').single();
 
   if (insertErr) {
     console.error('Insert order:', insertErr);
     return res.status(500).json({ error: 'Failed to save order' });
   }
 
+  let dispatch = { offerCreated: false, reason: 'unknown', eligibleDriverCount: 0 };
   try {
-    await assignNextDriver(supabase, inserted.id);
+    dispatch = await assignNextDriver(supabase, inserted.id);
   } catch (e) {
     console.error('assignNextDriver after order:', e);
+    dispatch = { offerCreated: false, reason: 'assign_exception', eligibleDriverCount: 0 };
   }
 
   return res.status(200).json({
     success: true,
     id: inserted.id,
+    trip_reference: inserted.trip_reference ?? null,
+    dispatch: {
+      offerCreated: dispatch.offerCreated,
+      reason: dispatch.reason,
+      eligibleDriverCount: dispatch.eligibleDriverCount ?? 0,
+      ...(dispatch.insertError ? { insertError: dispatch.insertError } : {}),
+    },
   });
 }

@@ -4,21 +4,30 @@ import {
   Text,
   TouchableOpacity,
   StyleSheet,
-  ActivityIndicator,
   Platform,
   Alert,
+  Dimensions,
 } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { supabase } from '../lib/supabase';
 import i18n from '../i18n';
-import { colors, ios } from '../theme';
+import { googleMapDarkStyle, ios } from '../theme';
+import { useTheme } from '../context/ThemeContext';
 import { getRouteLabel, isTerminalStatus } from '../utils/bookings';
 import { fetchDirectionsCoordinates } from '../utils/mapsDirections';
 import { useAuth } from '../context/AuthContext';
+import { getTripReference, formatTripRefLine } from '../utils/tripReference';
+import { canUseTripChat } from '../utils/tripChat';
+import { useTripChatUnread } from '../hooks/useTripChatUnread';
+import AppLoadingScreen from '../components/AppLoadingScreen';
+import TripChatPanel from '../components/TripChatPanel';
+import ChatUnreadDot from '../components/ChatUnreadDot';
+import RiderDriverVehicleSection from '../components/RiderDriverVehicleSection';
+import SharedRidePoolLine from '../components/SharedRidePoolLine';
 
 function hasLatLng(obj) {
   return (
@@ -72,7 +81,10 @@ const FOLLOW_MIN_DISTANCE_M = 80;
 export default function TripTrackingScreen() {
   const route = useRoute();
   const navigation = useNavigation();
+  const insets = useSafeAreaInsets();
   const { session } = useAuth();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createTripTrackingStyles(colors, isDark), [colors, isDark]);
   const orderId = route.params?.orderId;
   const [order, setOrder] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -81,12 +93,23 @@ export default function TripTrackingScreen() {
   /** Only true after foreground permission is granted — drives showsUserLocation on the map. */
   const [locationPermissionGranted, setLocationPermissionGranted] = useState(false);
   const [routePathCoords, setRoutePathCoords] = useState(null);
+  const [chatExpanded, setChatExpanded] = useState(false);
   const watchRef = useRef(null);
   const mapRef = useRef(null);
   const directionsReqId = useRef(0);
   const followRef = useRef({ t: 0, lat: null, lng: null });
   const orderStatusRef = useRef('');
   const lastKnownOrderStatusRef = useRef(null);
+
+  const chatOk = order && canUseTripChat(order.status);
+  const { hasUnread: headerChatUnread } = useTripChatUnread({
+    order,
+    userId: session?.user?.id,
+    enabled: !!order?.id && !!chatOk,
+  });
+
+  const tripRefCode = order ? getTripReference(order) : null;
+  const chatPanelHeight = Math.round(Dimensions.get('window').height * 0.42);
 
   const load = useCallback(async () => {
     if (!orderId) {
@@ -261,12 +284,10 @@ export default function TripTrackingScreen() {
     return String(order.status || '').toLowerCase() !== 'in_route';
   }, [order]);
 
+  const showChatHint = Boolean(chatOk && !chatExpanded);
+
   if (loading) {
-    return (
-      <SafeAreaView style={styles.centered} edges={['top', 'bottom']}>
-        <ActivityIndicator size="large" color={colors.primary} />
-      </SafeAreaView>
-    );
+    return <AppLoadingScreen />;
   }
 
   if (error || !order || !region) {
@@ -305,6 +326,7 @@ export default function TripTrackingScreen() {
         showsMyLocationButton={locationPermissionGranted}
         mapType="standard"
         userLocationPriority="high"
+        customMapStyle={isDark ? googleMapDarkStyle : undefined}
       >
         <Marker coordinate={{ latitude: pickup.latitude, longitude: pickup.longitude }} title={i18n.t('pickup_location')} />
         {hasLatLng(destination) && !destination?.pending ? (
@@ -332,11 +354,33 @@ export default function TripTrackingScreen() {
           <Text style={styles.headerTitle} numberOfLines={1}>
             {i18n.t('trip_tracking_title')}
           </Text>
-          <View style={styles.headerSpacer} />
+          {chatOk ? (
+            <TouchableOpacity
+              onPress={() => setChatExpanded((e) => !e)}
+              style={styles.headerBtn}
+              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+              accessibilityRole="button"
+              accessibilityLabel={i18n.t('trip_chat_expand')}
+            >
+              <View style={styles.headerChatIconWrap}>
+                <Ionicons name="chatbubbles-outline" size={26} color={colors.text} />
+                {headerChatUnread && !chatExpanded ? (
+                  <ChatUnreadDot style={styles.headerChatUnreadDot} />
+                ) : null}
+              </View>
+            </TouchableOpacity>
+          ) : (
+            <View style={styles.headerSpacer} />
+          )}
         </View>
         <Text style={styles.subRoute} numberOfLines={1}>
           {getRouteLabel(order.route)}
         </Text>
+        {tripRefCode ? (
+          <Text style={styles.tripRefLine} numberOfLines={1}>
+            {formatTripRefLine(i18n, tripRefCode)}
+          </Text>
+        ) : null}
         {showInTransitOnlyHint ? (
           <View style={styles.hintBanner}>
             <Text style={styles.hintBannerText}>{i18n.t('trip_tracking_in_transit_only_hint')}</Text>
@@ -351,11 +395,63 @@ export default function TripTrackingScreen() {
           </View>
         </SafeAreaView>
       ) : null}
+
+      {chatOk ? (
+        <View
+          style={[
+            styles.bottomStack,
+            {
+              paddingBottom: Math.max(insets.bottom, ios.spacing.sm),
+              maxHeight: chatExpanded ? Dimensions.get('window').height * 0.62 : undefined,
+            },
+          ]}
+        >
+          <SharedRidePoolLine order={order} variant="rider" />
+          {order.driver_id ? <RiderDriverVehicleSection driverId={order.driver_id} compact /> : null}
+          {showChatHint ? (
+            <View style={styles.chatHintBanner}>
+              <Ionicons name="information-circle-outline" size={18} color={colors.primaryDark} />
+              <Text style={styles.chatHintText}>{i18n.t('trip_tracking_chat_hint')}</Text>
+            </View>
+          ) : null}
+          <TouchableOpacity
+            style={styles.chatToggleRow}
+            onPress={() => setChatExpanded((e) => !e)}
+            activeOpacity={0.85}
+          >
+            <Ionicons name="chatbubbles-outline" size={22} color={colors.primaryDark} />
+            <Text style={styles.chatToggleText}>
+              {chatExpanded ? i18n.t('trip_chat_collapse') : i18n.t('trip_chat_expand')}
+            </Text>
+            {headerChatUnread && !chatExpanded ? (
+              <View style={styles.chatToggleUnreadWrap}>
+                <ChatUnreadDot style={styles.chatToggleUnreadDot} />
+              </View>
+            ) : null}
+            <Ionicons
+              name={chatExpanded ? 'chevron-down' : 'chevron-up'}
+              size={22}
+              color={colors.placeholder}
+            />
+          </TouchableOpacity>
+          {chatExpanded ? (
+            <View style={[styles.chatPanelWrap, { height: chatPanelHeight }]}>
+              <TripChatPanel
+                orderId={orderId}
+                userId={session?.user?.id}
+                chatClosed={false}
+                compact
+              />
+            </View>
+          ) : null}
+        </View>
+      ) : null}
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+function createTripTrackingStyles(colors, isDark) {
+  return StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.surface },
   map: { ...StyleSheet.absoluteFillObject },
   centered: {
@@ -394,7 +490,7 @@ const styles = StyleSheet.create({
     top: 0,
     left: 0,
     right: 0,
-    backgroundColor: 'rgba(255,255,255,0.92)',
+    backgroundColor: isDark ? 'rgba(15,10,26,0.94)' : 'rgba(255,255,255,0.92)',
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
     paddingBottom: ios.spacing.sm,
@@ -405,8 +501,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: ios.spacing.sm,
     minHeight: 44,
   },
-  headerBtn: { width: 44, justifyContent: 'center' },
+  headerBtn: { width: 44, justifyContent: 'center', alignItems: 'center' },
   headerSpacer: { width: 44 },
+  headerChatIconWrap: { position: 'relative', width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
+  headerChatUnreadDot: { position: 'absolute', top: -4, right: -6 },
   headerTitle: {
     flex: 1,
     textAlign: 'center',
@@ -417,7 +515,14 @@ const styles = StyleSheet.create({
   subRoute: {
     paddingHorizontal: ios.spacing.lg,
     fontSize: ios.fontSize.caption,
-    color: colors.textSecondary,
+    color: colors.textMuted,
+  },
+  tripRefLine: {
+    paddingHorizontal: ios.spacing.lg,
+    marginTop: 2,
+    fontSize: ios.fontSize.subhead,
+    fontWeight: ios.fontWeight.bold,
+    color: colors.text,
   },
   hintBanner: {
     marginHorizontal: ios.spacing.md,
@@ -448,4 +553,56 @@ const styles = StyleSheet.create({
     fontSize: ios.fontSize.caption,
     textAlign: 'center',
   },
+  bottomStack: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: isDark ? 'rgba(15,10,26,0.98)' : 'rgba(255,255,255,0.97)',
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    paddingHorizontal: ios.spacing.md,
+    paddingTop: ios.spacing.sm,
+    gap: ios.spacing.sm,
+  },
+  chatHintBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: ios.spacing.sm,
+    padding: ios.spacing.sm,
+    backgroundColor: colors.primaryLight,
+    borderRadius: ios.radius.md,
+  },
+  chatHintText: {
+    flex: 1,
+    fontSize: ios.fontSize.caption,
+    color: colors.text,
+    lineHeight: 18,
+  },
+  chatToggleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: ios.spacing.sm,
+    paddingVertical: ios.spacing.xs,
+  },
+  chatToggleText: {
+    flex: 1,
+    fontSize: ios.fontSize.callout,
+    fontWeight: ios.fontWeight.semibold,
+    color: colors.text,
+  },
+  chatToggleUnreadWrap: {
+    width: 16,
+    height: 16,
+    marginLeft: ios.spacing.xs,
+    position: 'relative',
+  },
+  chatToggleUnreadDot: { top: -6, right: -8 },
+  chatPanelWrap: {
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    borderRadius: ios.radius.lg,
+    overflow: 'hidden',
+  },
 });
+}

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import {
   Modal,
   View,
@@ -13,7 +13,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import i18n from '../i18n';
-import { colors, ios } from '../theme';
+import { ios } from '../theme';
+import { useTheme } from '../context/ThemeContext';
 
 const DEMO_BALANCE = '15.00';
 
@@ -25,7 +26,161 @@ const MOCK_ROWS = [
   { id: '5', amountKey: 'wallet_mock_amt_5', lineKey: 'wallet_mock_5', icon: 'gift-outline' },
 ];
 
+function createStyles(colors) {
+  return StyleSheet.create({
+    safe: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    topBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: ios.spacing.lg,
+      paddingVertical: ios.spacing.sm,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
+    topBarRtl: {
+      flexDirection: 'row-reverse',
+    },
+    topTitle: {
+      fontSize: ios.fontSize.title3,
+      fontWeight: ios.fontWeight.bold,
+      color: colors.text,
+    },
+    closeBtn: {
+      paddingVertical: 6,
+      paddingHorizontal: 4,
+    },
+    closeText: {
+      fontSize: ios.fontSize.body,
+      fontWeight: ios.fontWeight.semibold,
+      color: colors.primary,
+    },
+    scroll: {
+      flex: 1,
+    },
+    scrollContent: {
+      paddingHorizontal: ios.spacing.lg,
+      paddingBottom: ios.spacing.xxl,
+    },
+    balanceCard: {
+      borderRadius: ios.radius.xxl,
+      padding: ios.spacing.xl,
+      marginTop: ios.spacing.md,
+      marginBottom: ios.spacing.lg,
+    },
+    balanceLabel: {
+      fontSize: ios.fontSize.footnote,
+      fontWeight: ios.fontWeight.medium,
+      color: 'rgba(255,255,255,0.85)',
+      marginBottom: ios.spacing.xs,
+    },
+    balanceRow: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+    },
+    balanceRowRtl: {
+      flexDirection: 'row-reverse',
+    },
+    balanceAmount: {
+      fontSize: 36,
+      fontWeight: '700',
+      color: colors.white,
+      letterSpacing: -1,
+    },
+    balanceJod: {
+      fontSize: ios.fontSize.title3,
+      fontWeight: ios.fontWeight.semibold,
+      color: 'rgba(255,255,255,0.9)',
+      marginStart: 8,
+    },
+    addFundsBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      borderRadius: ios.radius.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingVertical: ios.spacing.md,
+      paddingHorizontal: ios.spacing.lg,
+      marginBottom: ios.spacing.xl,
+      gap: 10,
+    },
+    addFundsText: {
+      flex: 1,
+      fontSize: ios.fontSize.body,
+      fontWeight: ios.fontWeight.semibold,
+      color: colors.text,
+    },
+    sectionTitle: {
+      fontSize: ios.fontSize.subhead,
+      fontWeight: ios.fontWeight.semibold,
+      color: colors.textSecondary,
+      marginBottom: ios.spacing.sm,
+      textTransform: 'uppercase',
+      letterSpacing: 0.6,
+    },
+    list: {
+      backgroundColor: colors.surface,
+      borderRadius: ios.radius.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      overflow: 'hidden',
+    },
+    txRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: ios.spacing.md,
+      paddingHorizontal: ios.spacing.md,
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
+    txRowRtl: {
+      flexDirection: 'row-reverse',
+    },
+    txIconWrap: {
+      marginRight: ios.spacing.md,
+    },
+    txIconWrapRtl: {
+      marginRight: 0,
+      marginLeft: ios.spacing.md,
+    },
+    txBody: {
+      flex: 1,
+      minWidth: 0,
+    },
+    txLine: {
+      fontSize: ios.fontSize.callout,
+      color: colors.text,
+      lineHeight: 22,
+    },
+    txAmount: {
+      fontSize: ios.fontSize.callout,
+      fontWeight: ios.fontWeight.semibold,
+      color: colors.text,
+      marginStart: ios.spacing.sm,
+    },
+    disclaimer: {
+      flexDirection: 'row',
+      alignItems: 'flex-start',
+      gap: 8,
+      marginTop: ios.spacing.xl,
+      paddingHorizontal: ios.spacing.xs,
+    },
+    disclaimerText: {
+      flex: 1,
+      fontSize: ios.fontSize.caption,
+      color: colors.textSecondary,
+      lineHeight: 18,
+    },
+  });
+}
+
 export default function WalletModal({ visible, onClose }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const isArabic = i18n.locale === 'ar';
 
   const onAddFunds = () => {
@@ -115,153 +270,3 @@ export default function WalletModal({ visible, onClose }) {
     </Modal>
   );
 }
-
-const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  topBar: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: ios.spacing.lg,
-    paddingVertical: ios.spacing.sm,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  topBarRtl: {
-    flexDirection: 'row-reverse',
-  },
-  topTitle: {
-    fontSize: ios.fontSize.title3,
-    fontWeight: ios.fontWeight.bold,
-    color: colors.text,
-  },
-  closeBtn: {
-    paddingVertical: 6,
-    paddingHorizontal: 4,
-  },
-  closeText: {
-    fontSize: ios.fontSize.body,
-    fontWeight: ios.fontWeight.semibold,
-    color: colors.primary,
-  },
-  scroll: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingHorizontal: ios.spacing.lg,
-    paddingBottom: ios.spacing.xxl,
-  },
-  balanceCard: {
-    borderRadius: ios.radius.xxl,
-    padding: ios.spacing.xl,
-    marginTop: ios.spacing.md,
-    marginBottom: ios.spacing.lg,
-  },
-  balanceLabel: {
-    fontSize: ios.fontSize.footnote,
-    fontWeight: ios.fontWeight.medium,
-    color: 'rgba(255,255,255,0.85)',
-    marginBottom: ios.spacing.xs,
-  },
-  balanceRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-  },
-  balanceRowRtl: {
-    flexDirection: 'row-reverse',
-  },
-  balanceAmount: {
-    fontSize: 36,
-    fontWeight: '700',
-    color: colors.white,
-    letterSpacing: -1,
-  },
-  balanceJod: {
-    fontSize: ios.fontSize.title3,
-    fontWeight: ios.fontWeight.semibold,
-    color: 'rgba(255,255,255,0.9)',
-    marginStart: 8,
-  },
-  addFundsBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: ios.radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingVertical: ios.spacing.md,
-    paddingHorizontal: ios.spacing.lg,
-    marginBottom: ios.spacing.xl,
-    gap: 10,
-  },
-  addFundsText: {
-    flex: 1,
-    fontSize: ios.fontSize.body,
-    fontWeight: ios.fontWeight.semibold,
-    color: colors.text,
-  },
-  sectionTitle: {
-    fontSize: ios.fontSize.subhead,
-    fontWeight: ios.fontWeight.semibold,
-    color: colors.textSecondary,
-    marginBottom: ios.spacing.sm,
-    textTransform: 'uppercase',
-    letterSpacing: 0.6,
-  },
-  list: {
-    backgroundColor: colors.surface,
-    borderRadius: ios.radius.lg,
-    borderWidth: 1,
-    borderColor: colors.border,
-    overflow: 'hidden',
-  },
-  txRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: ios.spacing.md,
-    paddingHorizontal: ios.spacing.md,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  txRowRtl: {
-    flexDirection: 'row-reverse',
-  },
-  txIconWrap: {
-    marginRight: ios.spacing.md,
-  },
-  txIconWrapRtl: {
-    marginRight: 0,
-    marginLeft: ios.spacing.md,
-  },
-  txBody: {
-    flex: 1,
-    minWidth: 0,
-  },
-  txLine: {
-    fontSize: ios.fontSize.callout,
-    color: colors.text,
-    lineHeight: 22,
-  },
-  txAmount: {
-    fontSize: ios.fontSize.callout,
-    fontWeight: ios.fontWeight.semibold,
-    color: colors.text,
-    marginStart: ios.spacing.sm,
-  },
-  disclaimer: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    gap: 8,
-    marginTop: ios.spacing.xl,
-    paddingHorizontal: ios.spacing.xs,
-  },
-  disclaimerText: {
-    flex: 1,
-    fontSize: ios.fontSize.caption,
-    color: colors.textSecondary,
-    lineHeight: 18,
-  },
-});

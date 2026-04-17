@@ -21,7 +21,8 @@ import Constants from 'expo-constants';
 import * as Location from 'expo-location';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import i18n, { initI18n } from '../i18n';
-import { colors, ios } from '../theme';
+import { googleMapDarkStyle, ios } from '../theme';
+import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { useUserOrders } from '../hooks/useUserOrders';
 import { useSavedPlaces } from '../hooks/useSavedPlaces';
@@ -68,6 +69,45 @@ function hasLatLng(obj) {
 }
 
 function TripMapPreview({ pickup, destination, inRoute }) {
+  const { colors, isDark } = useTheme();
+  const mapStyles = useMemo(
+    () =>
+      StyleSheet.create({
+        wrap: {
+          height: 168,
+          borderRadius: ios.radius.xl,
+          overflow: 'hidden',
+          marginBottom: ios.spacing.lg,
+          backgroundColor: colors.logoDark,
+        },
+        map: { ...StyleSheet.absoluteFillObject },
+        liveBadge: {
+          position: 'absolute',
+          top: ios.spacing.md,
+          left: ios.spacing.md,
+          flexDirection: 'row',
+          alignItems: 'center',
+          backgroundColor: 'rgba(0,0,0,0.55)',
+          paddingHorizontal: ios.spacing.sm,
+          paddingVertical: 6,
+          borderRadius: 20,
+          gap: 6,
+        },
+        liveDot: {
+          width: 8,
+          height: 8,
+          borderRadius: 4,
+          backgroundColor: '#22C55E',
+        },
+        liveText: {
+          color: colors.white,
+          fontSize: ios.fontSize.caption,
+          fontWeight: ios.fontWeight.semibold,
+        },
+      }),
+    [colors]
+  );
+
   const [userLocationOk, setUserLocationOk] = useState(false);
 
   useEffect(() => {
@@ -132,6 +172,7 @@ function TripMapPreview({ pickup, destination, inRoute }) {
         toolbarEnabled={false}
         showsUserLocation={Boolean(inRoute && userLocationOk)}
         showsMyLocationButton={false}
+        customMapStyle={Platform.OS === 'android' && isDark ? googleMapDarkStyle : undefined}
       >
         <Marker coordinate={{ latitude: pickup.latitude, longitude: pickup.longitude }} />
         {hasD ? (
@@ -149,41 +190,9 @@ function TripMapPreview({ pickup, destination, inRoute }) {
   );
 }
 
-const mapStyles = StyleSheet.create({
-  wrap: {
-    height: 168,
-    borderRadius: ios.radius.xl,
-    overflow: 'hidden',
-    marginBottom: ios.spacing.lg,
-    backgroundColor: colors.logoDark,
-  },
-  map: { ...StyleSheet.absoluteFillObject },
-  liveBadge: {
-    position: 'absolute',
-    top: ios.spacing.md,
-    left: ios.spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    paddingHorizontal: ios.spacing.sm,
-    paddingVertical: 6,
-    borderRadius: 20,
-    gap: 6,
-  },
-  liveDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: '#22C55E',
-  },
-  liveText: {
-    color: colors.white,
-    fontSize: ios.fontSize.caption,
-    fontWeight: ios.fontWeight.semibold,
-  },
-});
-
 export default function DashboardScreen({ navigation }) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createDashboardStyles(colors), [colors]);
   const { profile } = useAuth();
   const insets = useSafeAreaInsets();
   const { loading, error, rows, refreshing, onRefresh } = useUserOrders();
@@ -225,10 +234,19 @@ export default function DashboardScreen({ navigation }) {
 
   const showMapPreview = Boolean(active && hasLatLng(active.pickup));
 
+  /** Light mode: soft lavender hero. Dark mode: tinted surface → background so light text stays readable. */
+  const heroGradientColors = useMemo(
+    () =>
+      isDark
+        ? [colors.primaryLight, colors.background, colors.background]
+        : ['#F3E8FF', colors.background, colors.background],
+    [isDark, colors.background, colors.primaryLight]
+  );
+
   const chromeHeader = (
     <View style={[styles.headerWrapper, Platform.OS !== 'ios' && styles.headerWrapperAndroid]}>
       {Platform.OS === 'ios' ? (
-        <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
+        <BlurView intensity={80} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
       ) : null}
       <View style={styles.header}>
         <View style={styles.headerSide}>
@@ -268,7 +286,7 @@ export default function DashboardScreen({ navigation }) {
           showsVerticalScrollIndicator={false}
         >
           <LinearGradient
-            colors={['#F3E8FF', colors.background, colors.background]}
+            colors={heroGradientColors}
             locations={[0, 0.35, 1]}
             style={styles.heroGradient}
           >
@@ -522,7 +540,8 @@ export default function DashboardScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+function createDashboardStyles(colors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   safeInner: { flex: 1 },
   headerWrapper: {
@@ -917,3 +936,4 @@ const styles = StyleSheet.create({
     lineHeight: 20,
   },
 });
+}

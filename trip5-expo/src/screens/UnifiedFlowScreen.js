@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   View,
   Text,
@@ -17,21 +18,69 @@ import {
   ImageBackground,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Location from 'expo-location';
 import i18n from '../i18n';
-import { colors, ios } from '../theme';
+import { ios } from '../theme';
+import { useTheme } from '../context/ThemeContext';
 import EmbeddedTripMap from '../components/EmbeddedTripMap';
 import { useAuth } from '../context/AuthContext';
 import { TERMS_AND_PRIVACY_TEXT } from '../legal/termsPrivacyText';
+import { formatTripRefLine } from '../utils/tripReference';
 
-const AMMAN_PHOTO = require('../../assets/amman-photo.png');
-const IRBID_PHOTO = require('../../assets/irbid-photo.png');
-const AIRPORT_PHOTO = require('../../assets/airport-photo.png');
+/** iOS wheel picker: dark sheets need explicit light text or wheels stay illegible. */
+function iosSpinnerPickerProps(isDark) {
+  if (Platform.OS !== 'ios') return {};
+  if (!isDark) return {};
+  return { textColor: '#FFFFFF', themeVariant: 'dark' };
+}
 
 const HOLD_DURATION = 140;
 const FADE_DURATION = 260;
+
+function BookingFlowFooter({ onBack, primaryLabel, onPrimary, primaryDisabled, primaryLoading }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createUnifiedFlowStyles(colors), [colors]);
+  const insets = useSafeAreaInsets();
+  return (
+    <View style={[styles.flowFooterWrap, { paddingBottom: Math.max(insets.bottom, 12) }]}>
+      <View style={styles.flowFooterRow}>
+        <Pressable
+          onPress={onBack}
+          style={({ pressed }) => [styles.flowFooterBack, pressed && styles.flowFooterBackPressed]}
+          hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+          accessibilityRole="button"
+          accessibilityLabel={i18n.t('back')}
+        >
+          <Ionicons name="chevron-back" size={22} color={colors.primary} />
+          <Text style={styles.flowFooterBackText}>{i18n.t('back')}</Text>
+        </Pressable>
+        <Pressable
+          onPress={onPrimary}
+          disabled={primaryDisabled}
+          style={({ pressed }) => [
+            styles.flowFooterNext,
+            primaryDisabled && styles.flowFooterNextDisabled,
+            pressed && !primaryDisabled && styles.flowFooterNextPressed,
+          ]}
+          accessibilityRole="button"
+          accessibilityState={{ disabled: primaryDisabled }}
+        >
+          {primaryLoading ? (
+            <ActivityIndicator color={colors.white} />
+          ) : (
+            <>
+              <Text style={[styles.flowFooterNextText, primaryDisabled && styles.flowFooterNextTextDisabled]}>
+                {primaryLabel}
+              </Text>
+              <Text style={[styles.flowFooterNextArrow, primaryDisabled && styles.flowFooterNextArrowDisabled]}>→</Text>
+            </>
+          )}
+        </Pressable>
+      </View>
+    </View>
+  );
+}
 
 export default function UnifiedFlowScreen({
   order,
@@ -39,7 +88,7 @@ export default function UnifiedFlowScreen({
   goNext,
   goBack,
   currentStep,
-  canProceedFromRoute,
+  onStopsBack,
   canProceedFromLocations,
   canProceedFromServiceSchedule,
   scheduleStep,
@@ -48,15 +97,24 @@ export default function UnifiedFlowScreen({
   isSubmitting,
   submitError,
   orderSent,
+  orderDispatch,
+  submittedTripReference,
   submit,
   resetOrder,
   onExitAfterSuccess,
   exitAfterSuccessLabel,
   initialOpenAirportModal = false,
   initialStopsMode = 'pickup',
+  mapFloatingSearchTop,
+  onFlowBack = () => {},
+  contentTopInset,
 }) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createUnifiedFlowStyles(colors), [colors]);
+  const iosPickerDark = iosSpinnerPickerProps(isDark);
   const isArabic = i18n.locale === 'ar';
   const { profile } = useAuth();
+  const topInsetScroll = contentTopInset ?? 0;
   const [mapMode, setMapMode] = useState(() =>
     initialStopsMode === 'destination' ? 'destination' : 'pickup'
   );
@@ -112,7 +170,7 @@ export default function UnifiedFlowScreen({
   }, []);
 
   useEffect(() => {
-    if (currentStep !== 1) {
+    if (currentStep !== 2) {
       setAirportFlowStep(null);
       setShowAirportModal(false);
     }
@@ -159,7 +217,7 @@ export default function UnifiedFlowScreen({
 
   useEffect(() => {
     if (!initialOpenAirportModal || airportModalFromHomeRef.current) return;
-    if (currentStep !== 1) return;
+    if (currentStep !== 2) return;
     airportModalFromHomeRef.current = true;
     setAirportFlowStep('from_to');
     setShowAirportModal(true);
@@ -223,11 +281,11 @@ export default function UnifiedFlowScreen({
     });
   };
 
-  const handleSelectOption = (saveFn) => {
+  const handleSelectOption = (saveFn, { advanceStep = true } = {}) => {
     if (isSaving) return;
     saveFn();
     playSaveAnimation(() => {
-      goNext();
+      if (advanceStep) goNext();
     });
   };
 
@@ -404,12 +462,32 @@ export default function UnifiedFlowScreen({
   const routeText = getRouteText();
 
   if (orderSent) {
+    const dispatchHint = orderDispatch
+      ? orderDispatch.offerCreated
+        ? i18n.t('order_dispatch_ok_sub')
+        : i18n.t('order_dispatch_no_offer')
+      : i18n.t('order_sent_desc');
     return (
-      <View style={styles.container}>
+      <View style={[styles.container, styles.containerSuccess, contentTopInset != null && { paddingTop: contentTopInset }]}>
         <View style={styles.card}>
           <Text style={styles.successIcon}>✓</Text>
           <Text style={styles.successTitle}>{i18n.t('order_sent')}</Text>
-          <Text style={styles.successDesc}>{i18n.t('order_sent_desc')}</Text>
+          <Text
+            style={[
+              styles.successDesc,
+              orderDispatch && !orderDispatch.offerCreated ? styles.successDescWarn : null,
+            ]}
+          >
+            {dispatchHint}
+          </Text>
+          {submittedTripReference ? (
+            <>
+              <Text style={styles.successTripRef} selectable>
+                {formatTripRefLine(i18n, submittedTripReference)}
+              </Text>
+              <Text style={styles.successRefHint}>{i18n.t('booking_reference_support_hint')}</Text>
+            </>
+          ) : null}
           <TouchableOpacity
             style={styles.primaryButton}
             onPress={() => {
@@ -431,55 +509,6 @@ export default function UnifiedFlowScreen({
 
   const renderStepContent = () => {
     switch (currentStep) {
-      case 1: {
-        const isAirportRoute = ['airport_to_amman', 'airport_to_irbid', 'amman_to_airport', 'irbid_to_airport'].includes(order.route);
-        return (
-          <ScrollView style={styles.routeScroll} contentContainerStyle={styles.routeContent} showsVerticalScrollIndicator={false}>
-            <Text style={styles.routePageTitle}>{i18n.t('step_heading_1')}</Text>
-            <RouteCardNew
-              city={i18n.locale === 'ar' ? 'إربد' : 'Irbid'}
-              variant="grey"
-              subtitle={i18n.t('route_card_irbid')}
-              imageSource={IRBID_PHOTO}
-              isSelected={order.route === 'amman_to_irbid'}
-              onPress={() => {
-                if (isSaving) return;
-                setShowAirportModal(false);
-                handleSelectOption(() => updateOrder({ route: 'amman_to_irbid', service: null }));
-              }}
-              disabled={isSaving}
-            />
-            <RouteCardNew
-              city={i18n.locale === 'ar' ? 'عمّان' : 'Amman'}
-              variant="light"
-              subtitle={i18n.t('route_card_amman')}
-              imageSource={AMMAN_PHOTO}
-              isSelected={order.route === 'irbid_to_amman'}
-              onPress={() => {
-                if (isSaving) return;
-                setShowAirportModal(false);
-                handleSelectOption(() => updateOrder({ route: 'irbid_to_amman', service: null }));
-              }}
-              disabled={isSaving}
-            />
-            <RouteCardNew
-              city={i18n.t('airport')}
-              variant="grey"
-              subtitle={i18n.t('service_airport_desc')}
-              imageSource={AIRPORT_PHOTO}
-              isSelected={isAirportRoute}
-              onPress={() => {
-                if (isSaving) return;
-                setAirportFlowStep('from_to');
-                setShowAirportModal(true);
-              }}
-              disabled={isSaving}
-              hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-            />
-          </ScrollView>
-        );
-      }
-
       case 2: {
         return (
           <View style={styles.step2Fullscreen}>
@@ -490,6 +519,8 @@ export default function UnifiedFlowScreen({
               setActiveMode={setMapMode}
               onNext={() => canProceedFromLocations && handleSelectOption(() => {})}
               nextDisabled={!canProceedFromLocations || isSaving}
+              floatingSearchTop={mapFloatingSearchTop}
+              onRequestBack={typeof onStopsBack === 'function' ? onStopsBack : goBack}
             />
           </View>
         );
@@ -511,8 +542,39 @@ export default function UnifiedFlowScreen({
         const isAirportRoute = ['airport_to_amman', 'airport_to_irbid', 'amman_to_airport', 'irbid_to_airport'].includes(
           order.route
         );
+        let footerLabel;
+        let footerOnPress;
+        let footerDisabled;
+        if (scheduleStep === 'date') {
+          footerLabel = i18n.t('pick_time');
+          footerOnPress = () => setScheduleStep('time');
+          footerDisabled = isSaving;
+        } else if (scheduleStep === 'time') {
+          if (isAirportRoute) {
+            footerLabel = i18n.t('next');
+            footerOnPress = () => canProceedFromServiceSchedule && handleSelectOption(() => {});
+            footerDisabled = !canProceedFromServiceSchedule || isSaving;
+          } else {
+            footerLabel = i18n.t('continue_to_services');
+            footerOnPress = () => !isSaving && setScheduleStep('service');
+            footerDisabled = isSaving;
+          }
+        } else {
+          footerLabel = i18n.t('next');
+          footerOnPress = () => canProceedFromServiceSchedule && handleSelectOption(() => {});
+          footerDisabled = !canProceedFromServiceSchedule || isSaving;
+        }
         return (
-          <ScrollView style={styles.stepScroll} contentContainerStyle={styles.step3Content} showsVerticalScrollIndicator={false}>
+          <View style={styles.stepColumn}>
+            <ScrollView
+              style={styles.stepScrollFlex}
+              contentContainerStyle={[
+                styles.step3Content,
+                { paddingTop: topInsetScroll },
+              ]}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
+            >
             {scheduleStep === 'date' && (
               <>
                 <ScheduleOptionCard
@@ -538,13 +600,6 @@ export default function UnifiedFlowScreen({
                     <Ionicons name="chevron-forward" size={18} color={colors.textSecondary} />
                   </Pressable>
                 )}
-                <Pressable
-                  style={({ pressed }) => [styles.primaryButton, styles.primaryButtonWithArrow, pressed && styles.primaryButtonPressed]}
-                  onPress={() => setScheduleStep('time')}
-                >
-                  <Text style={styles.primaryButtonText}>{i18n.t('pick_time')}</Text>
-                  <Text style={styles.primaryButtonArrow}>→</Text>
-                </Pressable>
               </>
             )}
             {scheduleStep === 'time' && (
@@ -574,30 +629,6 @@ export default function UnifiedFlowScreen({
                   </View>
                   <Text style={styles.etaText}>{etaStr}</Text>
                 </View>
-                {isAirportRoute ? (
-                  <Pressable
-                    style={({ pressed }) => [
-                      styles.primaryButton,
-                      styles.primaryButtonWithArrow,
-                      !canProceedFromServiceSchedule && styles.buttonDisabled,
-                      pressed && styles.primaryButtonPressed,
-                    ]}
-                    onPress={() => canProceedFromServiceSchedule && handleSelectOption(() => {})}
-                    disabled={!canProceedFromServiceSchedule || isSaving}
-                  >
-                    <Text style={styles.primaryButtonText}>{i18n.t('next')}</Text>
-                    <Text style={styles.primaryButtonArrow}>→</Text>
-                  </Pressable>
-                ) : (
-                  <Pressable
-                    style={({ pressed }) => [styles.primaryButton, styles.primaryButtonWithArrow, pressed && styles.primaryButtonPressed]}
-                    onPress={() => !isSaving && setScheduleStep('service')}
-                    disabled={isSaving}
-                  >
-                    <Text style={styles.primaryButtonText}>{i18n.t('continue_to_services')}</Text>
-                    <Text style={styles.primaryButtonArrow}>→</Text>
-                  </Pressable>
-                )}
               </>
             )}
             {scheduleStep === 'service' && !isAirportRoute && (
@@ -692,69 +723,86 @@ export default function UnifiedFlowScreen({
                   <TextInput
                     style={styles.input}
                     placeholder={i18n.t('enter_description')}
+                    placeholderTextColor={isDark ? colors.textMuted : colors.placeholder}
                     value={instantDesc}
                     onChangeText={(t) => setService({ type: 'instant', description: t })}
                     multiline
                   />
                 )}
-                <Pressable
-                  style={({ pressed }) => [
-                    styles.primaryButton,
-                    styles.primaryButtonWithArrow,
-                    !canProceedFromServiceSchedule && styles.buttonDisabled,
-                    pressed && styles.primaryButtonPressed,
-                  ]}
-                  onPress={() => canProceedFromServiceSchedule && handleSelectOption(() => {})}
-                  disabled={!canProceedFromServiceSchedule || isSaving}
-                >
-                  <Text style={styles.primaryButtonText}>{i18n.t('next')}</Text>
-                  <Text style={styles.primaryButtonArrow}>→</Text>
-                </Pressable>
               </>
             )}
           </ScrollView>
+            <BookingFlowFooter
+              onBack={onFlowBack}
+              primaryLabel={footerLabel}
+              onPrimary={footerOnPress}
+              primaryDisabled={footerDisabled}
+            />
+          </View>
         );
       }
 
       case 4:
         return (
-          <ScrollView style={styles.stepScroll} contentContainerStyle={styles.step5Content} showsVerticalScrollIndicator={false}>
-            <Text style={styles.stepTitle}>{i18n.t('order_summary')}</Text>
-            <SummaryRow label={i18n.t('route')} value={routeText} />
-            <SummaryRow
-              label={i18n.t('date_time')}
-              value={`${orderDate.toLocaleDateString()} ${orderDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
-            />
-            <SummaryRow label={i18n.t('service')} value={getServiceText()} />
-            <SummaryRow label={i18n.t('pickup_location')} value={order.pickup?.address || ''} />
-            <SummaryRow
-              label={i18n.t('destination')}
-              value={order.skipDestination ? i18n.t('no_destination_selected') : order.destination?.address || ''}
-            />
-            <SummaryRow label={i18n.t('full_name')} value={profile?.full_name || '—'} />
-            <SummaryRow label={i18n.t('phone_number')} value={profile?.phone || '—'} />
-            <Text style={styles.termsText}>
-              {i18n.t('terms_prefix')}
-              <Text style={styles.termsLink} onPress={() => setShowTermsModal(true)}>{i18n.t('terms_link')}</Text>
-              .
-            </Text>
-            {submitError && (
-              <View style={styles.errorBox}>
-                <Text style={styles.error}>{submitError}</Text>
-              </View>
-            )}
-            <TouchableOpacity
-              style={[styles.primaryButton, isSubmitting && styles.buttonDisabled]}
-              onPress={submit}
-              disabled={isSubmitting}
+          <View style={styles.stepColumn}>
+            <ScrollView
+              style={styles.stepScrollFlex}
+              contentContainerStyle={[
+                styles.summaryScrollContent,
+                { paddingTop: topInsetScroll },
+              ]}
+              showsVerticalScrollIndicator={false}
+              keyboardShouldPersistTaps="handled"
             >
-              {isSubmitting ? (
-                <ActivityIndicator color={colors.white} />
-              ) : (
-                <Text style={styles.primaryButtonText}>{i18n.t('submit_order')}</Text>
-              )}
-            </TouchableOpacity>
-          </ScrollView>
+              <Text style={styles.stepTitleSummary} numberOfLines={1}>
+                {i18n.t('order_summary')}
+              </Text>
+              <View style={styles.summaryRowsBlock}>
+                <SummaryRow label={i18n.t('route')} value={routeText} compact />
+                <SummaryRow
+                  label={i18n.t('date_time')}
+                  value={`${orderDate.toLocaleDateString()} ${orderDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`}
+                  compact
+                />
+                <SummaryRow label={i18n.t('service')} value={getServiceText()} compact />
+                <SummaryRow label={i18n.t('pickup_location')} value={order.pickup?.address || ''} compact />
+                <SummaryRow
+                  label={i18n.t('destination')}
+                  value={order.skipDestination ? i18n.t('no_destination_selected') : order.destination?.address || ''}
+                  compact
+                />
+                <View style={styles.summaryNamePhoneRow}>
+                  <View style={styles.summaryHalfCell}>
+                    <SummaryRow label={i18n.t('full_name')} value={profile?.full_name || '—'} compact />
+                  </View>
+                  <View style={styles.summaryHalfCell}>
+                    <SummaryRow label={i18n.t('phone_number')} value={profile?.phone || '—'} compact />
+                  </View>
+                </View>
+              </View>
+              <Text style={styles.termsTextSummary}>
+                {i18n.t('terms_prefix')}
+                <Text style={styles.termsLinkSummary} onPress={() => setShowTermsModal(true)}>
+                  {i18n.t('terms_link')}
+                </Text>
+                .
+              </Text>
+              {submitError ? (
+                <View style={styles.errorBoxSummary}>
+                  <Text style={styles.errorSummary} numberOfLines={2}>
+                    {submitError}
+                  </Text>
+                </View>
+              ) : null}
+            </ScrollView>
+            <BookingFlowFooter
+              onBack={onFlowBack}
+              primaryLabel={i18n.t('submit_order')}
+              onPrimary={submit}
+              primaryDisabled={isSubmitting}
+              primaryLoading={isSubmitting}
+            />
+          </View>
         );
 
       default:
@@ -763,7 +811,13 @@ export default function UnifiedFlowScreen({
   };
 
   return (
-    <View style={[styles.container, currentStep === 2 && styles.containerMapStep]}>
+    <View
+      style={[
+        styles.container,
+        currentStep === 2 && styles.containerMapStep,
+        currentStep >= 3 && !orderSent && styles.containerUnderChrome,
+      ]}
+    >
       <Modal visible={isSubmitting} transparent animationType="fade">
         <View style={styles.submitLoadingOverlay}>
           <View style={styles.submitLoadingCard}>
@@ -789,6 +843,7 @@ export default function UnifiedFlowScreen({
               transform: [{ scale: contentScale }],
             },
             currentStep === 2 && styles.cardMapStep,
+            currentStep >= 3 && !orderSent && styles.cardBookingScroll,
           ]}
         >
           {renderStepContent()}
@@ -815,6 +870,7 @@ export default function UnifiedFlowScreen({
                 minimumDate={minDate}
                 onChange={onDateChange}
                 display="spinner"
+                {...iosPickerDark}
               />
               </View>
             </Pressable>
@@ -848,6 +904,7 @@ export default function UnifiedFlowScreen({
                 mode="time"
                 onChange={onTimeChange}
                 display="spinner"
+                {...iosPickerDark}
               />
               </View>
             </Pressable>
@@ -899,7 +956,10 @@ export default function UnifiedFlowScreen({
                           if (isSaving) return;
                           setShowAirportModal(false);
                           setAirportFlowStep(null);
-                          handleSelectOption(() => updateOrder({ route: 'airport_to_amman', service: { type: 'airport', toAirport: false } }));
+                          handleSelectOption(
+                            () => updateOrder({ route: 'airport_to_amman', service: { type: 'airport', toAirport: false } }),
+                            { advanceStep: false }
+                          );
                         }}
                         disabled={isSaving}
                       >
@@ -911,7 +971,10 @@ export default function UnifiedFlowScreen({
                           if (isSaving) return;
                           setShowAirportModal(false);
                           setAirportFlowStep(null);
-                          handleSelectOption(() => updateOrder({ route: 'airport_to_irbid', service: { type: 'airport', toAirport: false } }));
+                          handleSelectOption(
+                            () => updateOrder({ route: 'airport_to_irbid', service: { type: 'airport', toAirport: false } }),
+                            { advanceStep: false }
+                          );
                         }}
                         disabled={isSaving}
                       >
@@ -926,7 +989,10 @@ export default function UnifiedFlowScreen({
                           if (isSaving) return;
                           setShowAirportModal(false);
                           setAirportFlowStep(null);
-                          handleSelectOption(() => updateOrder({ route: 'amman_to_airport', service: { type: 'airport', toAirport: true } }));
+                          handleSelectOption(
+                            () => updateOrder({ route: 'amman_to_airport', service: { type: 'airport', toAirport: true } }),
+                            { advanceStep: false }
+                          );
                         }}
                         disabled={isSaving}
                       >
@@ -938,7 +1004,10 @@ export default function UnifiedFlowScreen({
                           if (isSaving) return;
                           setShowAirportModal(false);
                           setAirportFlowStep(null);
-                          handleSelectOption(() => updateOrder({ route: 'irbid_to_airport', service: { type: 'airport', toAirport: true } }));
+                          handleSelectOption(
+                            () => updateOrder({ route: 'irbid_to_airport', service: { type: 'airport', toAirport: true } }),
+                            { advanceStep: false }
+                          );
                         }}
                         disabled={isSaving}
                       >
@@ -978,6 +1047,8 @@ export default function UnifiedFlowScreen({
 }
 
 function ScheduleOptionCard({ icon, title, subtitle, isSelected, onPress, disabled }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createUnifiedFlowStyles(colors), [colors]);
   return (
     <Pressable
       style={({ pressed }) => [
@@ -1004,107 +1075,9 @@ function ScheduleOptionCard({ icon, title, subtitle, isSelected, onPress, disabl
   );
 }
 
-function RouteCardNew({ city, badge, badgeLabel, avatars, extraCount, isSelected, onPress, disabled, variant, subtitle, hitSlop, imageSource }) {
-  const isLight = variant === 'light';
-  const content = (
-    <>
-      {imageSource && (
-        <LinearGradient
-          colors={['rgba(0,0,0,0.65)', 'rgba(0,0,0,0.35)', 'rgba(0,0,0,0.5)']}
-          locations={[0, 0.5, 1]}
-          style={styles.routeCardImageOverlay}
-        />
-      )}
-      <View style={styles.routeCardNewContent}>
-        <View style={styles.routeCardNewTop}>
-          {badge && (
-            <View style={[styles.routeCardBadge, isLight ? styles.routeCardBadgeLight : styles.routeCardBadgeGrey]}>
-              <Text style={[styles.routeCardBadgeText, isLight ? styles.routeCardBadgeTextLight : styles.routeCardBadgeTextGrey]}>
-                {badgeLabel}
-              </Text>
-            </View>
-          )}
-          <Text style={[
-            styles.routeCardCity,
-            imageSource ? styles.routeCardCityOnImage : (isLight ? styles.routeCardCityLight : styles.routeCardCityGrey),
-          ]}>
-            {city}
-          </Text>
-          {subtitle ? (
-            <Text style={[
-              styles.routeCardSubtitle,
-              imageSource ? styles.routeCardSubtitleOnImage : (isLight ? styles.routeCardSubtitleLight : styles.routeCardSubtitleGrey),
-            ]}>
-              {subtitle}
-            </Text>
-          ) : null}
-        </View>
-        <View style={styles.routeCardNewBottom}>
-          {avatars && (
-            <View style={styles.avatarRow}>
-              {[1, 2, 3].map((i) => (
-                <View key={i} style={[styles.avatar, isLight ? styles.avatarLight : styles.avatarGrey, i > 1 && styles.avatarOverlap]} />
-              ))}
-              {extraCount != null && (
-                <Text style={[styles.avatarExtra, isLight ? styles.avatarExtraLight : styles.avatarExtraGrey]}>
-                  +{extraCount}
-                </Text>
-              )}
-            </View>
-          )}
-          <View style={[
-            styles.routeCardArrow,
-            isSelected && styles.routeCardArrowSelected,
-            imageSource && styles.routeCardArrowOnImage,
-          ]}>
-            <Text style={[
-              styles.routeCardArrowText,
-              imageSource && styles.routeCardArrowTextOnImage,
-              isSelected && styles.routeCardArrowTextSelected,
-            ]}>→</Text>
-          </View>
-        </View>
-      </View>
-    </>
-  );
-  if (imageSource) {
-    return (
-      <Pressable
-        onPress={onPress}
-        disabled={disabled}
-        hitSlop={hitSlop}
-        style={({ pressed }) => [
-          styles.routeCardNew,
-          styles.routeCardWithImage,
-          isLight ? styles.routeCardLight : styles.routeCardGrey,
-          isSelected && styles.routeCardSelected,
-          pressed && styles.routeCardPressed,
-        ]}
-      >
-        <ImageBackground source={imageSource} style={styles.routeCardImageBg} imageStyle={styles.routeCardImageStyle} resizeMode="cover">
-          {content}
-        </ImageBackground>
-      </Pressable>
-    );
-  }
-  return (
-    <Pressable
-      style={({ pressed }) => [
-        styles.routeCardNew,
-        isLight ? styles.routeCardLight : styles.routeCardGrey,
-        isSelected && styles.routeCardSelected,
-        pressed && styles.routeCardPressed,
-      ]}
-      onPress={onPress}
-      disabled={disabled}
-      hitSlop={hitSlop}
-    >
-      {content}
-    </Pressable>
-  );
-}
-
 function DestinationCard({ city, subtitle, imageSource, isSelected, onPress, disabled }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createUnifiedFlowStyles(colors), [colors]);
   return (
     <Pressable
       style={({ pressed }) => [
@@ -1137,6 +1110,8 @@ function DestinationCard({ city, subtitle, imageSource, isSelected, onPress, dis
 }
 
 function ServiceCardNew({ icon, title, subtitle, price, isSelected, onPress, disabled, showWatermark }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createUnifiedFlowStyles(colors), [colors]);
   return (
     <Pressable
       style={({ pressed }) => [
@@ -1174,6 +1149,8 @@ function ServiceCardNew({ icon, title, subtitle, price, isSelected, onPress, dis
 }
 
 function ServiceOption({ title, subtitle, price, onPress, isSelected, disabled }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createUnifiedFlowStyles(colors), [colors]);
   return (
     <Pressable
       style={({ pressed }) => [
@@ -1198,21 +1175,39 @@ function ServiceOption({ title, subtitle, price, onPress, isSelected, disabled }
   );
 }
 
-function SummaryRow({ label, value }) {
+function SummaryRow({ label, value, compact }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createUnifiedFlowStyles(colors), [colors]);
   return (
-    <View style={styles.summaryRow}>
-      <Text style={styles.summaryLabel}>{label}</Text>
-      <Text style={styles.summaryValue}>{value}</Text>
+    <View style={[styles.summaryRow, compact && styles.summaryRowCompact]}>
+      <Text style={[styles.summaryLabel, compact && styles.summaryLabelCompact]}>{label}</Text>
+      <Text
+        style={[styles.summaryValue, compact && styles.summaryValueCompact]}
+        numberOfLines={compact ? 2 : undefined}
+        ellipsizeMode="tail"
+      >
+        {value}
+      </Text>
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+function createUnifiedFlowStyles(colors) {
+  return StyleSheet.create({
   container: {
     flex: 1,
     padding: ios.spacing.lg,
     paddingTop: ios.spacing.md,
     backgroundColor: colors.background,
+  },
+  containerUnderChrome: {
+    paddingTop: 0,
+    paddingHorizontal: 0,
+    paddingBottom: 0,
+  },
+  containerSuccess: {
+    paddingHorizontal: ios.spacing.lg,
+    justifyContent: 'center',
   },
   containerMapStep: {
     overflow: 'visible',
@@ -1252,8 +1247,25 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 0 },
     elevation: 0,
   },
+  cardBookingScroll: {
+    paddingTop: 0,
+    paddingHorizontal: ios.spacing.md,
+    paddingBottom: 0,
+    borderRadius: 0,
+    backgroundColor: colors.background,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  stepColumn: {
+    flex: 1,
+    minHeight: 0,
+  },
   stepScroll: {
     flex: 1,
+  },
+  stepScrollFlex: {
+    flex: 1,
+    minHeight: 0,
   },
   stepContent: {
     minHeight: 260,
@@ -1267,7 +1279,9 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   step3Content: {
-    paddingBottom: ios.spacing.xxl,
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingBottom: ios.spacing.lg,
   },
   step5Content: {
     paddingBottom: ios.spacing.xxl,
@@ -1543,8 +1557,83 @@ const styles = StyleSheet.create({
     color: colors.text,
     lineHeight: 22,
   },
-  step3Content: {
-    paddingBottom: ios.spacing.xxl,
+  flowFooterWrap: {
+    flexShrink: 0,
+    alignSelf: 'stretch',
+    // Full-bleed footer: cancel cardBookingScroll horizontal padding so the bar reaches screen edges.
+    marginHorizontal: -ios.spacing.md,
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    backgroundColor: colors.surface,
+    paddingHorizontal: ios.spacing.md,
+    paddingTop: ios.spacing.sm,
+  },
+  flowFooterRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  flowFooterBack: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: ios.spacing.md,
+    paddingHorizontal: ios.spacing.sm,
+    minWidth: 92,
+  },
+  flowFooterBackPressed: { opacity: 0.65 },
+  flowFooterBackText: {
+    marginLeft: 2,
+    fontSize: ios.fontSize.subhead,
+    fontWeight: ios.fontWeight.semibold,
+    color: colors.primary,
+  },
+  flowFooterNext: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: ios.spacing.sm,
+    backgroundColor: colors.primaryDark,
+    paddingVertical: ios.spacing.lg,
+    paddingHorizontal: ios.spacing.lg,
+    borderRadius: ios.radius.lg,
+    minHeight: ios.minTouchTarget,
+    ...Platform.select({
+      ios: {
+        shadowColor: colors.primaryDark,
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.22,
+        shadowRadius: 4,
+      },
+      android: { elevation: 3 },
+    }),
+  },
+  flowFooterNextDisabled: {
+    backgroundColor: colors.metallic,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  flowFooterNextPressed: { opacity: 0.92 },
+  flowFooterNextText: {
+    color: colors.white,
+    fontSize: ios.fontSize.body,
+    fontWeight: ios.fontWeight.bold,
+    letterSpacing: 0.2,
+  },
+  flowFooterNextTextDisabled: {
+    color: colors.textMuted,
+    fontWeight: ios.fontWeight.semibold,
+  },
+  flowFooterNextArrow: {
+    color: colors.white,
+    fontSize: 18,
+    fontWeight: ios.fontWeight.bold,
+    marginLeft: 8,
+  },
+  flowFooterNextArrowDisabled: {
+    color: colors.textMuted,
   },
   serviceCardNew: {
     flexDirection: 'row',
@@ -1771,125 +1860,6 @@ const styles = StyleSheet.create({
     letterSpacing: -0.5,
     lineHeight: 38,
   },
-  routeScroll: { flex: 1 },
-  routeContent: { paddingBottom: ios.spacing.xxl },
-  routeSubOptions: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: ios.spacing.md,
-    marginBottom: ios.spacing.lg,
-  },
-  routeSubBtn: {},
-  routePageTitle: {
-    fontSize: ios.fontSize.title1,
-    fontWeight: ios.fontWeight.bold,
-    color: colors.text,
-    marginBottom: ios.spacing.lg,
-    letterSpacing: -0.5,
-  },
-  routeCardNew: {
-    borderRadius: 20,
-    padding: ios.spacing.xl,
-    marginBottom: ios.spacing.lg,
-    ...Platform.select({
-      ios: { shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 12, shadowOffset: { width: 0, height: 2 } },
-      android: { elevation: 4 },
-    }),
-  },
-  routeCardWithImage: {
-    overflow: 'hidden',
-    padding: 0,
-  },
-  routeCardImageBg: {
-    flex: 1,
-    padding: ios.spacing.xl,
-    justifyContent: 'center',
-  },
-  routeCardImageStyle: { borderRadius: 20 },
-  routeCardImageOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    borderRadius: 20,
-  },
-  routeCardLight: { backgroundColor: colors.surface },
-  routeCardGrey: { backgroundColor: colors.metallic },
-  routeCardSelected: {
-    borderWidth: 2,
-    borderColor: colors.primary,
-  },
-  routeCardPressed: { opacity: 0.9 },
-  routeCardNewContent: { minHeight: 80 },
-  routeCardNewTop: { marginBottom: ios.spacing.lg },
-  routeCardBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: ios.spacing.sm,
-    paddingVertical: 4,
-    borderRadius: 6,
-    marginBottom: ios.spacing.sm,
-  },
-  routeCardBadgeLight: { backgroundColor: colors.primaryLight },
-  routeCardBadgeGrey: { backgroundColor: 'rgba(0,0,0,0.06)' },
-  routeCardBadgeText: {
-    fontSize: 11,
-    fontWeight: ios.fontWeight.bold,
-    letterSpacing: 0.5,
-  },
-  routeCardBadgeTextLight: { color: colors.primary },
-  routeCardBadgeTextGrey: { color: colors.textSecondary },
-  routeCardCity: {
-    fontSize: 28,
-    fontWeight: ios.fontWeight.bold,
-    letterSpacing: -0.5,
-  },
-  routeCardCityLight: { color: colors.text },
-  routeCardCityGrey: { color: colors.text },
-  routeCardSubtitle: {
-    fontSize: ios.fontSize.footnote,
-    marginTop: 4,
-  },
-  routeCardSubtitleLight: { color: colors.textSecondary },
-  routeCardSubtitleGrey: { color: colors.textSecondary },
-  routeCardCityOnImage: { color: colors.white },
-  routeCardSubtitleOnImage: { color: 'rgba(255,255,255,0.9)' },
-  routeCardArrowOnImage: { backgroundColor: 'rgba(255,255,255,0.25)' },
-  routeCardNewBottom: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  avatarRow: { flexDirection: 'row', alignItems: 'center' },
-  avatar: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
-    borderWidth: 2,
-    borderColor: colors.surface,
-  },
-  avatarOverlap: { marginLeft: -10 },
-  avatarLight: { backgroundColor: colors.primaryLight },
-  avatarGrey: { backgroundColor: colors.border },
-  avatarExtra: {
-    marginLeft: 8,
-    fontSize: ios.fontSize.footnote,
-    fontWeight: ios.fontWeight.semibold,
-  },
-  avatarExtraLight: { color: colors.primary },
-  avatarExtraGrey: { color: colors.textSecondary },
-  routeCardArrow: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  routeCardArrowSelected: { backgroundColor: colors.primary },
-  routeCardArrowText: {
-    color: colors.primary,
-    fontSize: 20,
-    fontWeight: ios.fontWeight.bold,
-  },
-  routeCardArrowTextOnImage: { color: colors.white },
-  routeCardArrowTextSelected: { color: colors.white },
   customDestBtn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -2250,6 +2220,23 @@ const styles = StyleSheet.create({
     borderRadius: 6,
   },
   error: { color: colors.error, fontSize: 12, marginBottom: 8 },
+  summaryScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    paddingHorizontal: ios.spacing.xs,
+    paddingBottom: ios.spacing.sm,
+  },
+  stepTitleSummary: {
+    fontSize: ios.fontSize.title3,
+    fontWeight: ios.fontWeight.bold,
+    marginBottom: ios.spacing.md,
+    textAlign: 'center',
+    color: colors.text,
+    letterSpacing: -0.3,
+  },
+  summaryRowsBlock: {
+    flexShrink: 1,
+  },
   summaryRow: {
     backgroundColor: colors.surface,
     paddingVertical: ios.spacing.md,
@@ -2259,14 +2246,67 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
   },
+  summaryRowCompact: {
+    paddingVertical: 8,
+    paddingHorizontal: ios.spacing.md,
+    marginBottom: 4,
+    borderRadius: ios.radius.lg,
+  },
   summaryLabel: {
     fontSize: ios.fontSize.caption,
     color: colors.textSecondary,
     marginBottom: 2,
   },
+  summaryLabelCompact: {
+    fontSize: ios.fontSize.footnote,
+    fontWeight: ios.fontWeight.semibold,
+    marginBottom: 3,
+    letterSpacing: 0.35,
+    textTransform: 'uppercase',
+  },
   summaryValue: {
     fontSize: ios.fontSize.subhead,
     color: colors.text,
+  },
+  summaryValueCompact: {
+    fontSize: ios.fontSize.callout,
+    lineHeight: 22,
+    fontWeight: ios.fontWeight.medium,
+  },
+  summaryNamePhoneRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+  },
+  summaryHalfCell: {
+    flex: 1,
+    minWidth: 0,
+    paddingHorizontal: 2,
+  },
+  termsTextSummary: {
+    fontSize: ios.fontSize.caption,
+    lineHeight: 18,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: ios.spacing.sm,
+    paddingHorizontal: ios.spacing.sm,
+  },
+  termsLinkSummary: {
+    fontSize: ios.fontSize.caption,
+    color: colors.primary,
+    fontWeight: ios.fontWeight.semibold,
+    textDecorationLine: 'underline',
+  },
+  errorBoxSummary: {
+    backgroundColor: colors.errorBg,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    marginTop: ios.spacing.sm,
+  },
+  errorSummary: {
+    color: colors.error,
+    fontSize: ios.fontSize.footnote,
+    lineHeight: 20,
   },
   errorBox: { backgroundColor: colors.errorBg, padding: 12, borderRadius: 8, marginBottom: 12 },
   successIcon: { fontSize: 56, color: colors.primary, textAlign: 'center', marginTop: 24 },
@@ -2277,6 +2317,27 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 12,
     paddingHorizontal: 16,
+  },
+  successDescWarn: {
+    color: colors.text,
+    fontWeight: '600',
+  },
+  successTripRef: {
+    fontSize: ios.fontSize.title3,
+    fontWeight: ios.fontWeight.bold,
+    color: colors.primaryDark,
+    textAlign: 'center',
+    marginTop: ios.spacing.lg,
+    paddingHorizontal: ios.spacing.md,
+    letterSpacing: 0.5,
+  },
+  successRefHint: {
+    fontSize: ios.fontSize.caption,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: ios.spacing.sm,
+    paddingHorizontal: ios.spacing.lg,
+    lineHeight: 18,
   },
   pickerModalOverlay: {
     flex: 1,
@@ -2312,3 +2373,4 @@ const styles = StyleSheet.create({
   pickerModalCancel: { fontSize: 17, color: colors.textSecondary },
   pickerModalDone: { fontSize: 17, color: colors.primary, fontWeight: '600' },
 });
+}

@@ -1,17 +1,192 @@
-import React, { useCallback, useContext, useState } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform } from 'react-native';
+import React, { useCallback, useContext, useMemo, useState } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import i18n, { initI18n } from '../i18n';
-import { colors, ios } from '../theme';
+import { ios } from '../theme';
+import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { LocaleTabContext } from '../context/LocaleTabContext';
 import LanguageToggle from '../components/LanguageToggle';
 import WalletModal from '../components/WalletModal';
 import { useFocusEffect } from '@react-navigation/native';
 
+/** Appearance options: icons match Auth (sun/moon); auto uses clock for Jordan schedule. */
+const THEME_OPTIONS = [
+  { key: 'auto', icon: 'time-outline' },
+  { key: 'light', icon: 'sunny-outline' },
+  { key: 'dark', icon: 'moon-outline' },
+];
+
+function createStyles(colors) {
+  return StyleSheet.create({
+    safe: { flex: 1, backgroundColor: colors.background },
+    safeInner: { flex: 1 },
+    headerWrapper: {
+      position: 'relative',
+      overflow: 'hidden',
+      borderBottomWidth: StyleSheet.hairlineWidth,
+      borderBottomColor: colors.border,
+    },
+    headerWrapperAndroid: {
+      backgroundColor: colors.surface,
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: ios.spacing.lg,
+      paddingVertical: ios.spacing.md,
+      minHeight: 44,
+    },
+    headerTitle: {
+      fontSize: ios.fontSize.title3,
+      fontWeight: ios.fontWeight.bold,
+      color: colors.text,
+    },
+    scroll: { flex: 1 },
+    scrollContent: {
+      paddingHorizontal: ios.spacing.lg,
+      paddingBottom: ios.spacing.xxl + 24,
+    },
+    profileCard: {
+      alignItems: 'center',
+      paddingVertical: ios.spacing.xl,
+      marginBottom: ios.spacing.md,
+    },
+    avatarLarge: {
+      width: 88,
+      height: 88,
+      borderRadius: 44,
+      backgroundColor: colors.primaryLight,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: ios.spacing.md,
+    },
+    avatarLargeText: {
+      fontSize: 32,
+      fontWeight: ios.fontWeight.bold,
+      color: colors.primaryDark,
+    },
+    profileName: {
+      fontSize: ios.fontSize.title3,
+      fontWeight: ios.fontWeight.semibold,
+      color: colors.text,
+      textAlign: 'center',
+    },
+    profilePhone: {
+      marginTop: ios.spacing.xs,
+      fontSize: ios.fontSize.subhead,
+      color: colors.textSecondary,
+      textAlign: 'center',
+    },
+    row: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colors.surface,
+      borderRadius: ios.radius.lg,
+      padding: ios.spacing.md,
+      marginBottom: ios.spacing.md,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+    },
+    rowIconWrap: {
+      width: 44,
+      height: 44,
+      borderRadius: 22,
+      backgroundColor: colors.primaryLight,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: ios.spacing.md,
+    },
+    rowBody: { flex: 1 },
+    rowTitle: {
+      fontSize: ios.fontSize.callout,
+      fontWeight: ios.fontWeight.semibold,
+      color: colors.text,
+    },
+    rowSub: {
+      fontSize: ios.fontSize.caption,
+      color: colors.textSecondary,
+      marginTop: 2,
+    },
+    langRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: colors.surface,
+      borderRadius: ios.radius.lg,
+      paddingHorizontal: ios.spacing.md,
+      paddingVertical: ios.spacing.sm,
+      marginBottom: ios.spacing.md,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+    },
+    langLabel: {
+      fontSize: ios.fontSize.subhead,
+      fontWeight: ios.fontWeight.medium,
+      color: colors.text,
+    },
+    themeBlock: {
+      backgroundColor: colors.surface,
+      borderRadius: ios.radius.lg,
+      padding: ios.spacing.md,
+      marginBottom: ios.spacing.lg,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+    },
+    themeBlockTitle: {
+      fontSize: ios.fontSize.subhead,
+      fontWeight: ios.fontWeight.semibold,
+      color: colors.text,
+      marginBottom: ios.spacing.xs,
+    },
+    themeHint: {
+      fontSize: ios.fontSize.caption,
+      color: colors.textMuted,
+      marginBottom: ios.spacing.md,
+      lineHeight: 18,
+    },
+    themeIconRow: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: ios.spacing.sm,
+      alignItems: 'center',
+    },
+    themeIconBtn: {
+      width: ios.minTouchTarget,
+      height: ios.minTouchTarget,
+      borderRadius: ios.minTouchTarget / 2,
+      alignItems: 'center',
+      justifyContent: 'center',
+      backgroundColor: colors.background,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+    },
+    themeIconBtnActive: {
+      borderColor: colors.primary,
+      borderWidth: 2,
+      backgroundColor: colors.primaryLight,
+    },
+    signOutRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: ios.spacing.sm,
+      paddingVertical: ios.spacing.md,
+    },
+    signOutText: {
+      fontSize: ios.fontSize.callout,
+      fontWeight: ios.fontWeight.semibold,
+      color: colors.error,
+    },
+  });
+}
+
 export default function AccountScreen() {
+  const { colors, isDark, preference, setPreference } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const { signOut, profile } = useAuth();
   const bumpTabs = useContext(LocaleTabContext);
   const [walletVisible, setWalletVisible] = useState(false);
@@ -41,7 +216,7 @@ export default function AccountScreen() {
   const header = (
     <View style={[styles.headerWrapper, Platform.OS !== 'ios' && styles.headerWrapperAndroid]}>
       {Platform.OS === 'ios' ? (
-        <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
+        <BlurView intensity={80} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
       ) : null}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>{i18n.t('account_title')}</Text>
@@ -91,6 +266,37 @@ export default function AccountScreen() {
             <LanguageToggle onToggle={refreshLocale} />
           </View>
 
+          <View style={styles.themeBlock}>
+            <Text style={styles.themeBlockTitle}>{i18n.t('account_appearance')}</Text>
+            <Text style={styles.themeHint}>{i18n.t('account_theme_hint')}</Text>
+            <View style={styles.themeIconRow}>
+              {THEME_OPTIONS.map(({ key: p, icon }) => {
+                const selected = preference === p;
+                return (
+                  <Pressable
+                    key={p}
+                    onPress={() => setPreference(p)}
+                    style={({ pressed }) => [
+                      styles.themeIconBtn,
+                      selected && styles.themeIconBtnActive,
+                      pressed && { opacity: 0.85 },
+                    ]}
+                    accessibilityRole="button"
+                    accessibilityLabel={i18n.t(`theme_${p}`)}
+                    accessibilityState={{ selected }}
+                    hitSlop={{ top: 4, bottom: 4, left: 4, right: 4 }}
+                  >
+                    <Ionicons
+                      name={icon}
+                      size={22}
+                      color={selected ? colors.primaryDark : colors.textMuted}
+                    />
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
           <TouchableOpacity
             style={styles.signOutRow}
             onPress={() => signOut()}
@@ -107,125 +313,3 @@ export default function AccountScreen() {
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
-  safeInner: { flex: 1 },
-  headerWrapper: {
-    position: 'relative',
-    overflow: 'hidden',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  headerWrapperAndroid: {
-    backgroundColor: colors.surface,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: ios.spacing.lg,
-    paddingVertical: ios.spacing.md,
-    minHeight: 44,
-  },
-  headerTitle: {
-    fontSize: ios.fontSize.title3,
-    fontWeight: ios.fontWeight.bold,
-    color: colors.text,
-  },
-  scroll: { flex: 1 },
-  scrollContent: {
-    paddingHorizontal: ios.spacing.lg,
-    paddingBottom: ios.spacing.xxl + 24,
-  },
-  profileCard: {
-    alignItems: 'center',
-    paddingVertical: ios.spacing.xl,
-    marginBottom: ios.spacing.md,
-  },
-  avatarLarge: {
-    width: 88,
-    height: 88,
-    borderRadius: 44,
-    backgroundColor: colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: ios.spacing.md,
-  },
-  avatarLargeText: {
-    fontSize: 32,
-    fontWeight: ios.fontWeight.bold,
-    color: colors.primaryDark,
-  },
-  profileName: {
-    fontSize: ios.fontSize.title3,
-    fontWeight: ios.fontWeight.semibold,
-    color: colors.text,
-    textAlign: 'center',
-  },
-  profilePhone: {
-    marginTop: ios.spacing.xs,
-    fontSize: ios.fontSize.subhead,
-    color: colors.textSecondary,
-    textAlign: 'center',
-  },
-  row: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.surface,
-    borderRadius: ios.radius.lg,
-    padding: ios.spacing.md,
-    marginBottom: ios.spacing.md,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-  },
-  rowIconWrap: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: ios.spacing.md,
-  },
-  rowBody: { flex: 1 },
-  rowTitle: {
-    fontSize: ios.fontSize.callout,
-    fontWeight: ios.fontWeight.semibold,
-    color: colors.text,
-  },
-  rowSub: {
-    fontSize: ios.fontSize.caption,
-    color: colors.textSecondary,
-    marginTop: 2,
-  },
-  langRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    backgroundColor: colors.surface,
-    borderRadius: ios.radius.lg,
-    paddingHorizontal: ios.spacing.md,
-    paddingVertical: ios.spacing.sm,
-    marginBottom: ios.spacing.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-  },
-  langLabel: {
-    fontSize: ios.fontSize.subhead,
-    fontWeight: ios.fontWeight.medium,
-    color: colors.text,
-  },
-  signOutRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: ios.spacing.sm,
-    paddingVertical: ios.spacing.md,
-  },
-  signOutText: {
-    fontSize: ios.fontSize.callout,
-    fontWeight: ios.fontWeight.semibold,
-    color: colors.error,
-  },
-});

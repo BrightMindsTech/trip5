@@ -5,6 +5,14 @@
 export const OFFER_SECONDS = 10;
 
 /**
+ * @typedef {Object} AssignDriverResult
+ * @property {boolean} offerCreated
+ * @property {'ok'|'order_not_found'|'order_not_dispatchable'|'past_offers_query_failed'|'drivers_query_failed'|'no_eligible_drivers'|'all_drivers_already_offered'|'offer_insert_failed'} reason
+ * @property {number} [eligibleDriverCount] drivers matching is_driver + active subscription (before "already offered" filter)
+ * @property {string} [insertError]
+ */
+
+/**
  * Find pending offers past expiry, mark expired, try next driver for each order.
  */
 export async function processExpiredOffers(supabase) {
@@ -36,16 +44,30 @@ export async function processExpiredOffers(supabase) {
 
 /**
  * Assign the next driver who has not yet been offered this order.
+ * @returns {Promise<AssignDriverResult>}
  */
 export async function assignNextDriver(supabase, orderId) {
+  /** @type {AssignDriverResult} */
+  const result = {
+    offerCreated: false,
+    reason: 'order_not_found',
+    eligibleDriverCount: 0,
+  };
+
   const { data: order, error: oErr } = await supabase
     .from('orders')
     .select('id, status, driver_id')
     .eq('id', orderId)
     .maybeSingle();
 
-  if (oErr || !order) return;
-  if (String(order.status) !== 'pending' || order.driver_id != null) return;
+  if (oErr || !order) {
+    result.reason = 'order_not_found';
+    return result;
+  }
+  if (String(order.status) !== 'pending' || order.driver_id != null) {
+    result.reason = 'order_not_dispatchable';
+    return result;
+  }
 
   const { data: pastOffers, error: pErr } = await supabase
     .from('order_driver_offers')
@@ -54,7 +76,8 @@ export async function assignNextDriver(supabase, orderId) {
 
   if (pErr) {
     console.error('assignNextDriver pastOffers:', pErr);
-    return;
+    result.reason = 'past_offers_query_failed';
+    return result;
   }
 
   const offered = new Set((pastOffers || []).map((r) => r.driver_id));
@@ -69,11 +92,18 @@ export async function assignNextDriver(supabase, orderId) {
 
   if (dErr) {
     console.error('assignNextDriver drivers:', dErr);
-    return;
+    result.reason = 'drivers_query_failed';
+    return result;
   }
 
-  const nextId = (drivers || []).map((d) => d.id).find((id) => !offered.has(id));
-  if (!nextId) return;
+  const pool = drivers || [];
+  result.eligibleDriverCount = pool.length;
+
+  const nextId = pool.map((d) => d.id).find((id) => !offered.has(id));
+  if (!nextId) {
+    result.reason = pool.length === 0 ? 'no_eligible_drivers' : 'all_drivers_already_offered';
+    return result;
+  }
 
   const expiresAt = new Date(Date.now() + OFFER_SECONDS * 1000).toISOString();
 
@@ -85,5 +115,12 @@ export async function assignNextDriver(supabase, orderId) {
 
   if (insErr) {
     console.error('assignNextDriver insert:', insErr);
+    result.reason = 'offer_insert_failed';
+    result.insertError = insErr.message || String(insErr);
+    return result;
   }
+
+  result.offerCreated = true;
+  result.reason = 'ok';
+  return result;
 }

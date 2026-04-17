@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,9 +13,66 @@ import {
 } from 'react-native';
 import * as Location from 'expo-location';
 import i18n from '../i18n';
-import { colors } from '../theme';
+import { useTheme } from '../context/ThemeContext';
+
+function createDetailsStyles(colors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    content: { padding: 24, paddingTop: 48, paddingBottom: 48 },
+    title: { fontSize: 22, fontWeight: '600', marginBottom: 24, color: colors.text },
+    label: { fontSize: 16, fontWeight: '600', marginBottom: 8, color: colors.text },
+    selectedAddress: {
+      fontSize: 14,
+      color: colors.textSecondary,
+      marginBottom: 8,
+      padding: 8,
+      backgroundColor: colors.primaryLight,
+      borderRadius: 6,
+    },
+    locationRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
+    setAddressBtn: {
+      flex: 1,
+      backgroundColor: colors.primary,
+      padding: 14,
+      borderRadius: 8,
+      alignItems: 'center',
+    },
+    setAddressText: { color: colors.white, fontWeight: '600', fontSize: 14 },
+    useLocationBtn: {
+      flex: 1,
+      backgroundColor: colors.primaryLight,
+      padding: 14,
+      borderRadius: 8,
+      alignItems: 'center',
+    },
+    useLocationBtnText: { color: colors.primary, fontWeight: '600', fontSize: 14 },
+    btnDisabled: { opacity: 0.6 },
+    input: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      padding: 14,
+      marginBottom: 16,
+      fontSize: 16,
+      backgroundColor: colors.surface,
+      color: colors.text,
+    },
+    error: { color: colors.error, fontSize: 12, marginBottom: 12 },
+    button: {
+      backgroundColor: colors.primary,
+      padding: 16,
+      borderRadius: 12,
+      marginTop: 16,
+      alignItems: 'center',
+    },
+    buttonDisabled: { backgroundColor: colors.disabled },
+    buttonText: { color: colors.white, fontSize: 18, fontWeight: '600' },
+  });
+}
 
 export default function DetailsScreen({ order, updateOrder, goNext, canProceed, isValidPhone }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createDetailsStyles(colors), [colors]);
   const [pickupManualText, setPickupManualText] = useState('');
   const [destManualText, setDestManualText] = useState('');
   const [loadingPickup, setLoadingPickup] = useState(false);
@@ -183,6 +240,7 @@ export default function DetailsScreen({ order, updateOrder, goNext, canProceed, 
         <TextInput
           style={styles.input}
           placeholder={i18n.t('enter_full_name')}
+          placeholderTextColor={colors.placeholder}
           value={order.fullName}
           onChangeText={(t) => updateOrder({ fullName: t })}
         />
@@ -192,6 +250,7 @@ export default function DetailsScreen({ order, updateOrder, goNext, canProceed, 
         <TextInput
           style={styles.input}
           placeholder={i18n.t('enter_phone')}
+          placeholderTextColor={colors.placeholder}
           value={order.phoneNumber}
           onChangeText={(t) => updateOrder({ phoneNumber: t })}
           keyboardType="phone-pad"
@@ -209,55 +268,3 @@ export default function DetailsScreen({ order, updateOrder, goNext, canProceed, 
     </KeyboardAvoidingView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: 24, paddingTop: 48, paddingBottom: 48 },
-  title: { fontSize: 22, fontWeight: '600', marginBottom: 24, color: colors.text },
-  label: { fontSize: 16, fontWeight: '600', marginBottom: 8, color: colors.text },
-  selectedAddress: {
-    fontSize: 14,
-    color: colors.textSecondary,
-    marginBottom: 8,
-    padding: 8,
-    backgroundColor: colors.primaryLight,
-    borderRadius: 6,
-  },
-  locationRow: { flexDirection: 'row', gap: 12, marginBottom: 16 },
-  setAddressBtn: {
-    flex: 1,
-    backgroundColor: colors.primary,
-    padding: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  setAddressText: { color: colors.white, fontWeight: '600', fontSize: 14 },
-  useLocationBtn: {
-    flex: 1,
-    backgroundColor: colors.primaryLight,
-    padding: 14,
-    borderRadius: 8,
-    alignItems: 'center',
-  },
-  useLocationBtnText: { color: colors.primary, fontWeight: '600', fontSize: 14 },
-  btnDisabled: { opacity: 0.6 },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    padding: 14,
-    marginBottom: 16,
-    fontSize: 16,
-    backgroundColor: colors.surface,
-  },
-  error: { color: colors.error, fontSize: 12, marginBottom: 12 },
-  button: {
-    backgroundColor: colors.primary,
-    padding: 16,
-    borderRadius: 12,
-    marginTop: 16,
-    alignItems: 'center',
-  },
-  buttonDisabled: { backgroundColor: colors.disabled },
-  buttonText: { color: colors.white, fontSize: 18, fontWeight: '600' },
-});

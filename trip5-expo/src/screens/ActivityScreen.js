@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,7 +13,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import i18n, { initI18n } from '../i18n';
-import { colors, ios } from '../theme';
+import { ios } from '../theme';
+import { useTheme } from '../context/ThemeContext';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { useUserOrders } from '../hooks/useUserOrders';
 import {
@@ -25,9 +26,17 @@ import {
   getRouteLabel,
   statusLabel,
 } from '../utils/bookings';
+import { getTripReference, formatTripRefLine } from '../utils/tripReference';
+import { useAuth } from '../context/AuthContext';
+import { canUseTripChat } from '../utils/tripChat';
+import { useTripChatUnread } from '../hooks/useTripChatUnread';
+import ActivityCurrentTripCard from '../components/ActivityCurrentTripCard';
 
 export default function ActivityScreen() {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createActivityStyles(colors), [colors]);
   const navigation = useNavigation();
+  const { session } = useAuth();
   const { loading, error, rows, refreshing, onRefresh } = useUserOrders();
   const [localeState, setLocaleState] = useState(i18n.locale);
 
@@ -49,7 +58,12 @@ export default function ActivityScreen() {
 
   const { active, history } = partitionBookings(rows);
   const now = new Date();
-  const activeInRoute = String(active?.status || '').toLowerCase() === 'in_route';
+  const activeChatOk = active && canUseTripChat(active.status);
+  const { hasUnread: activityChatUnread } = useTripChatUnread({
+    order: active,
+    userId: session?.user?.id,
+    enabled: activeChatOk && !!active?.id,
+  });
 
   const renderHistoryRow = (item) => {
     const scheduled = new Date(item.scheduled_at);
@@ -69,6 +83,11 @@ export default function ActivityScreen() {
           )}
         </View>
         <Text style={styles.historyWhen}>{formatBookingDate(item.scheduled_at, i18n.locale)}</Text>
+        {getTripReference(item) ? (
+          <Text style={styles.historyRef} numberOfLines={1}>
+            {formatTripRefLine(i18n, getTripReference(item))}
+          </Text>
+        ) : null}
         <Text style={styles.historyLine} numberOfLines={1}>
           {i18n.t('pickup_location')}: {pickupSummary(item.pickup) || '—'}
         </Text>
@@ -83,7 +102,7 @@ export default function ActivityScreen() {
   const header = (
     <View style={[styles.headerWrapper, Platform.OS !== 'ios' && styles.headerWrapperAndroid]}>
       {Platform.OS === 'ios' ? (
-        <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
+        <BlurView intensity={80} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
       ) : null}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>{i18n.t('activity_title')}</Text>
@@ -121,39 +140,14 @@ export default function ActivityScreen() {
               {active ? (
                 <>
                   <Text style={styles.sectionLabel}>{i18n.t('activity_active_section')}</Text>
-                  <View style={styles.activeCard}>
-                    <View style={styles.historyRowTop}>
-                      <Text style={styles.historyRoute} numberOfLines={2}>
-                        {getRouteLabel(active.route)}
-                      </Text>
-                      <View style={styles.badge}>
-                        <Text style={styles.badgeText}>{statusLabel(active.status)}</Text>
-                      </View>
-                    </View>
-                    <Text style={styles.historyWhen}>{formatBookingDate(active.scheduled_at, i18n.locale)}</Text>
-                    <Text style={styles.historyLine} numberOfLines={1}>
-                      {i18n.t('pickup_location')}: {pickupSummary(active.pickup) || '—'}
-                    </Text>
-                    <Text style={styles.historyLine} numberOfLines={1}>
-                      {i18n.t('destination')}:{' '}
-                      {active.destination?.pending
-                        ? i18n.t('no_destination_selected')
-                        : destinationSummary(active.destination) || '—'}
-                    </Text>
-                    {activeInRoute ? (
-                      <TouchableOpacity
-                        style={styles.trackBtn}
-                        onPress={() => navigation.navigate('TripTracking', { orderId: active.id })}
-                        activeOpacity={0.85}
-                        accessibilityRole="button"
-                        accessibilityLabel={i18n.t('dashboard_in_route_banner_title')}
-                      >
-                        <Ionicons name="navigate" size={20} color={colors.white} />
-                        <Text style={styles.trackBtnText}>{i18n.t('dashboard_in_route_banner_title')}</Text>
-                        <Ionicons name="chevron-forward" size={20} color={colors.white} />
-                      </TouchableOpacity>
-                    ) : null}
-                  </View>
+                  <ActivityCurrentTripCard
+                    order={active}
+                    locale={i18n.locale}
+                    navigation={navigation}
+                    activeChatOk={activeChatOk}
+                    activityChatUnread={activityChatUnread}
+                    onCancelled={onRefresh}
+                  />
                 </>
               ) : null}
 
@@ -178,7 +172,8 @@ export default function ActivityScreen() {
   );
 }
 
-const styles = StyleSheet.create({
+function createActivityStyles(colors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   safeInner: { flex: 1 },
   headerWrapper: {
@@ -280,6 +275,12 @@ const styles = StyleSheet.create({
     fontSize: ios.fontSize.caption,
     color: colors.textSecondary,
     marginTop: 4,
+    marginBottom: 2,
+  },
+  historyRef: {
+    fontSize: ios.fontSize.caption,
+    fontWeight: ios.fontWeight.semibold,
+    color: colors.primaryDark,
     marginBottom: ios.spacing.xs,
   },
   historyLine: {
@@ -330,3 +331,4 @@ const styles = StyleSheet.create({
     paddingVertical: ios.spacing.md,
   },
 });
+}

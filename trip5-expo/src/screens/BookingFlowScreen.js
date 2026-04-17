@@ -1,31 +1,26 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { View, StyleSheet, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { useFocusEffect, useRoute } from '@react-navigation/native';
 import i18n, { initI18n } from '../i18n';
-import { colors, ios } from '../theme';
-import { useAuth } from '../context/AuthContext';
+import { ios } from '../theme';
+import { useTheme } from '../context/ThemeContext';
 import { useOrder } from '../context/OrderContext';
-import { Ionicons } from '@expo/vector-icons';
 import StepProgress from '../components/StepProgress';
-import LanguageToggle from '../components/LanguageToggle';
-import WalletModal from '../components/WalletModal';
 import UnifiedFlowScreen from './UnifiedFlowScreen';
 
 export default function BookingFlowScreen({ navigation }) {
   const route = useRoute();
   const appliedHomeParams = useRef(false);
   const appliedInitialDestination = useRef(false);
-  const { signOut } = useAuth();
   const {
     order,
     updateOrder,
     currentStep,
     goNext,
     goBack,
-    canProceedFromRoute,
     canProceedFromLocations,
     canProceedFromServiceSchedule,
     scheduleStep,
@@ -34,14 +29,20 @@ export default function BookingFlowScreen({ navigation }) {
     isSubmitting,
     submitError,
     orderSent,
+    orderDispatch,
+    submittedTripReference,
     submit,
     resetOrder,
     setCurrentStep,
   } = useOrder();
 
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createBookingFlowStyles(colors, isDark), [colors, isDark]);
+
   const [locale, setLocale] = useState(i18n.locale);
-  const [walletVisible, setWalletVisible] = useState(false);
   const [initialOpenAirportModal, setInitialOpenAirportModal] = useState(false);
+  /** Height of StepProgress on map step — positions floating search below it */
+  const [stepProgressHeight, setStepProgressHeight] = useState(132);
 
   useEffect(() => {
     initI18n()
@@ -50,18 +51,21 @@ export default function BookingFlowScreen({ navigation }) {
   }, []);
 
   useEffect(() => {
+    const p = route.params;
+    if (p?.presetRoute != null || p?.openAirportModal === true) return;
+    navigation.goBack();
+  }, [navigation, route.params]);
+
+  useEffect(() => {
     if (appliedHomeParams.current) return;
     const preset = route.params?.presetRoute;
-    const openAir = route.params?.openAirportModal;
+    const openAir = route.params?.openAirportModal === true;
     if (preset == null && !openAir) return;
     appliedHomeParams.current = true;
     if (preset != null) {
       updateOrder({ route: preset, service: null });
-      // Same as wizard step 1: after choosing Irbid or Amman route, continue to the map (step 2).
-      if (preset === 'amman_to_irbid' || preset === 'irbid_to_amman') {
-        setCurrentStep(2);
-      }
     }
+    setCurrentStep(2);
     if (openAir) {
       setInitialOpenAirportModal(true);
     }
@@ -93,96 +97,66 @@ export default function BookingFlowScreen({ navigation }) {
     }, [resetOrder])
   );
 
-  const refreshLocale = useCallback(() => {
-    setLocale(i18n.locale);
-  }, []);
-
   const insets = useSafeAreaInsets();
   const mapStep = currentStep === 2 && !orderSent;
+  /** Step progress + status bar clearance for scroll areas (service & summary). */
+  const contentTopInset =
+    orderSent ? insets.top + 12 : currentStep >= 3 && !orderSent ? insets.top + stepProgressHeight : undefined;
 
   const getStepHeading = (step) => {
-    const keys = ['step_heading_1', 'step_heading_2', 'step_heading_3', 'step_heading_4'];
-    return i18n.t(keys[step - 1] || 'step_heading_1');
+    const keys = ['step_heading_2', 'step_heading_3', 'step_heading_4'];
+    return i18n.t(keys[step - 2] || 'step_heading_2');
   };
 
   const handleHeaderBack = () => {
     if (orderSent) return;
-    if (currentStep > 1) {
-      goBack();
-    } else {
+    if (currentStep === 2) {
       navigation.goBack();
+    } else {
+      goBack();
     }
   };
 
-  const chrome = (
-    <>
-      <View style={[styles.headerWrapper, Platform.OS !== 'ios' && styles.headerWrapperAndroid]}>
-        {Platform.OS === 'ios' ? (
-          <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} />
-        ) : null}
-        <View style={styles.header}>
-          <View style={styles.headerLeft}>
-            <TouchableOpacity
-              onPress={handleHeaderBack}
-              style={styles.backBtn}
-              activeOpacity={0.6}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              disabled={orderSent}
-            >
-              <Text style={[styles.backChevron, orderSent && styles.backChevronDisabled]}>‹</Text>
-              <Text style={[styles.backText, orderSent && styles.backChevronDisabled]}>{i18n.t('back')}</Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.headerSpacer} />
-          <View style={styles.headerRight}>
-            <TouchableOpacity
-              onPress={() => setWalletVisible(true)}
-              style={styles.walletBtn}
-              hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-              accessibilityRole="button"
-              accessibilityLabel={i18n.t('wallet_title')}
-            >
-              <Ionicons name="wallet-outline" size={22} color={colors.primary} />
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => signOut()} style={styles.signOutBtn} hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}>
-              <Text style={styles.signOutText}>{i18n.t('sign_out')}</Text>
-            </TouchableOpacity>
-            <LanguageToggle onToggle={refreshLocale} />
-          </View>
-        </View>
-      </View>
-      {!orderSent && (
-        <StepProgress
-          current={currentStep}
-          total={4}
-          heading={currentStep === 1 ? null : getStepHeading(currentStep)}
-          routeText={
-            order.route
-              ? (() => {
-                  const r = order.route;
-                  if (i18n.locale === 'ar') {
-                    if (r === 'irbid_to_amman') return i18n.t('from_irbid_to_amman');
-                    if (r === 'amman_to_irbid') return i18n.t('from_amman_to_irbid');
-                    if (r === 'airport_to_amman') return i18n.t('route_airport_to_amman');
-                    if (r === 'airport_to_irbid') return i18n.t('route_airport_to_irbid');
-                    if (r === 'amman_to_airport') return i18n.t('route_amman_to_airport');
-                    if (r === 'irbid_to_airport') return i18n.t('route_irbid_to_airport');
-                  } else {
-                    if (r === 'irbid_to_amman') return i18n.t('route_irbid_to_amman');
-                    if (r === 'amman_to_irbid') return i18n.t('route_amman_to_irbid');
-                    if (r === 'airport_to_amman') return i18n.t('route_airport_to_amman');
-                    if (r === 'airport_to_irbid') return i18n.t('route_airport_to_irbid');
-                    if (r === 'amman_to_airport') return i18n.t('route_amman_to_airport');
-                    if (r === 'irbid_to_airport') return i18n.t('route_irbid_to_airport');
-                  }
-                  return null;
-                })()
-              : null
-          }
-        />
-      )}
-    </>
+  const routeBadgeText = order.route
+    ? (() => {
+        const r = order.route;
+        if (i18n.locale === 'ar') {
+          if (r === 'irbid_to_amman') return i18n.t('from_irbid_to_amman');
+          if (r === 'amman_to_irbid') return i18n.t('from_amman_to_irbid');
+          if (r === 'airport_to_amman') return i18n.t('route_airport_to_amman');
+          if (r === 'airport_to_irbid') return i18n.t('route_airport_to_irbid');
+          if (r === 'amman_to_airport') return i18n.t('route_amman_to_airport');
+          if (r === 'irbid_to_airport') return i18n.t('route_irbid_to_airport');
+        } else {
+          if (r === 'irbid_to_amman') return i18n.t('route_irbid_to_amman');
+          if (r === 'amman_to_irbid') return i18n.t('route_amman_to_irbid');
+          if (r === 'airport_to_amman') return i18n.t('route_airport_to_amman');
+          if (r === 'airport_to_irbid') return i18n.t('route_airport_to_irbid');
+          if (r === 'amman_to_airport') return i18n.t('route_amman_to_airport');
+          if (r === 'irbid_to_airport') return i18n.t('route_irbid_to_airport');
+        }
+        return null;
+      })()
+    : null;
+
+  const stepProgressEl = !orderSent && (
+    <StepProgress
+      current={currentStep}
+      heading={getStepHeading(currentStep)}
+      routeText={routeBadgeText}
+      onLayout={(e) => setStepProgressHeight(Math.ceil(e.nativeEvent.layout.height))}
+    />
   );
+
+  /** Floating strip: step progress only (same for map + schedule + summary). */
+  const chromeStepProgressOnly = !orderSent ? (
+    <View style={[styles.mapStepProgressStrip, Platform.OS !== 'ios' && styles.mapStepProgressStripAndroid]}>
+      {Platform.OS === 'ios' ? <BlurView intensity={88} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} /> : null}
+      <View style={styles.mapStepProgressInner}>{stepProgressEl}</View>
+    </View>
+  ) : null;
+
+  const mapFloatingSearchTop = insets.top + stepProgressHeight + 10;
 
   const flow = (
     <UnifiedFlowScreen
@@ -191,7 +165,9 @@ export default function BookingFlowScreen({ navigation }) {
       goNext={goNext}
       goBack={goBack}
       currentStep={currentStep}
-      canProceedFromRoute={canProceedFromRoute}
+      onStopsBack={() => navigation.goBack()}
+      onFlowBack={handleHeaderBack}
+      contentTopInset={contentTopInset}
       canProceedFromLocations={canProceedFromLocations}
       canProceedFromServiceSchedule={canProceedFromServiceSchedule}
       scheduleStep={scheduleStep}
@@ -200,22 +176,35 @@ export default function BookingFlowScreen({ navigation }) {
       isSubmitting={isSubmitting}
       submitError={submitError}
       orderSent={orderSent}
+      orderDispatch={orderDispatch}
+      submittedTripReference={submittedTripReference}
       submit={submit}
       resetOrder={resetOrder}
       onExitAfterSuccess={() => navigation.goBack()}
       exitAfterSuccessLabel={i18n.t('dashboard_back_home')}
       initialOpenAirportModal={initialOpenAirportModal}
       initialStopsMode={route.params?.initialDestination ? 'destination' : 'pickup'}
+      mapFloatingSearchTop={mapStep ? mapFloatingSearchTop : undefined}
     />
   );
 
+  const useOverlayChrome = mapStep || (!orderSent && currentStep >= 3);
+
+  /**
+   * Schedule + summary (step ≥ 3): omit bottom safe-area on this wrapper so the strip isn’t left
+   * floating above the home indicator — `BookingFlowFooter` applies `paddingBottom: insets.bottom` itself.
+   */
+  const bookingSafeEdges = useMemo(() => {
+    if (orderSent) return ['bottom', 'left', 'right'];
+    if (mapStep) return ['bottom', 'left', 'right'];
+    if (currentStep >= 3) return ['left', 'right'];
+    return ['top', 'left', 'right', 'bottom'];
+  }, [orderSent, mapStep, currentStep]);
+
   return (
     <View style={styles.safe} key={locale}>
-      <SafeAreaView
-        style={styles.safeInner}
-        edges={mapStep ? ['bottom', 'left', 'right'] : ['top', 'left', 'right', 'bottom']}
-      >
-        <StatusBar style="dark" />
+      <SafeAreaView style={styles.safeInner} edges={bookingSafeEdges}>
+        <StatusBar style={isDark ? 'light' : 'dark'} />
         {mapStep ? (
           <>
             <View style={styles.contentMapFill}>{flow}</View>
@@ -223,7 +212,7 @@ export default function BookingFlowScreen({ navigation }) {
               <BlurView
                 pointerEvents="none"
                 intensity={90}
-                tint="light"
+                tint={isDark ? 'dark' : 'light'}
                 style={[styles.statusBarBlurBand, { height: Math.max(insets.top, 20) }]}
               />
             ) : (
@@ -236,21 +225,61 @@ export default function BookingFlowScreen({ navigation }) {
                 ]}
               />
             )}
-            <View style={[styles.mapStepChrome, { paddingTop: insets.top }]}>{chrome}</View>
+            <View style={[styles.mapStepChrome, { paddingTop: insets.top }]}>{chromeStepProgressOnly}</View>
+          </>
+        ) : useOverlayChrome ? (
+          <>
+            <View style={styles.content}>{flow}</View>
+            {Platform.OS === 'ios' ? (
+              <BlurView
+                pointerEvents="none"
+                intensity={90}
+                tint={isDark ? 'dark' : 'light'}
+                style={[styles.statusBarBlurBand, { height: Math.max(insets.top, 20) }]}
+              />
+            ) : (
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.statusBarBlurBand,
+                  styles.statusBarBlurBandAndroid,
+                  { height: Math.max(insets.top, 24) },
+                ]}
+              />
+            )}
+            <View style={[styles.mapStepChrome, { paddingTop: insets.top }]}>{chromeStepProgressOnly}</View>
+          </>
+        ) : orderSent ? (
+          <>
+            <View style={styles.content}>{flow}</View>
+            {Platform.OS === 'ios' ? (
+              <BlurView
+                pointerEvents="none"
+                intensity={90}
+                tint={isDark ? 'dark' : 'light'}
+                style={[styles.statusBarBlurBand, { height: Math.max(insets.top, 20) }]}
+              />
+            ) : (
+              <View
+                pointerEvents="none"
+                style={[
+                  styles.statusBarBlurBand,
+                  styles.statusBarBlurBandAndroid,
+                  { height: Math.max(insets.top, 24) },
+                ]}
+              />
+            )}
           </>
         ) : (
-          <>
-            {chrome}
-            <View style={styles.content}>{flow}</View>
-          </>
+          <View style={styles.content}>{flow}</View>
         )}
       </SafeAreaView>
-      <WalletModal visible={walletVisible} onClose={() => setWalletVisible(false)} />
     </View>
   );
 }
 
-const styles = StyleSheet.create({
+function createBookingFlowStyles(colors, isDark) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background, minHeight: 200, position: 'relative' },
   safeInner: { flex: 1, position: 'relative' },
   contentMapFill: {
@@ -266,56 +295,32 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   statusBarBlurBandAndroid: {
-    backgroundColor: 'rgba(250, 245, 255, 0.88)',
+    backgroundColor: isDark ? 'rgba(15,10,26,0.92)' : 'rgba(250, 245, 255, 0.88)',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: 'rgba(233, 213, 255, 0.85)',
+    borderBottomColor: isDark ? 'rgba(61, 42, 92, 0.9)' : 'rgba(233, 213, 255, 0.85)',
     elevation: 2,
   },
   mapStepChrome: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
     zIndex: 10,
     elevation: 14,
   },
-  headerWrapper: {
+  mapStepProgressStrip: {
     position: 'relative',
     overflow: 'hidden',
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-  headerWrapperAndroid: {
-    backgroundColor: colors.surface,
+  mapStepProgressStripAndroid: {
+    backgroundColor: isDark ? 'rgba(26,19,51,0.96)' : 'rgba(255,255,255,0.94)',
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: ios.spacing.lg,
-    paddingVertical: ios.spacing.sm,
-    minHeight: 36,
-  },
-  headerLeft: { flexDirection: 'row', alignItems: 'center', minWidth: 80 },
-  headerSpacer: { flex: 1 },
-  headerRight: { minWidth: 148, flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end' },
-  walletBtn: { paddingVertical: 6, paddingHorizontal: 4, marginRight: 4 },
-  signOutBtn: { paddingVertical: 6, paddingHorizontal: 4, marginRight: 8 },
-  signOutText: { fontSize: 14, color: colors.textSecondary, fontWeight: '500' },
-  backChevronDisabled: { color: colors.textSecondary, opacity: 0.7 },
-  backBtn: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 8,
-    paddingRight: 8,
-  },
-  backChevron: {
-    fontSize: 28,
-    fontWeight: '300',
-    color: colors.primary,
-    marginTop: -4,
-    marginRight: 4,
-  },
-  backText: {
-    fontSize: ios.fontSize.body,
-    color: colors.primary,
-    fontWeight: ios.fontWeight.regular,
+  mapStepProgressInner: {
+    position: 'relative',
+    zIndex: 1,
   },
   content: { flex: 1 },
 });
+}

@@ -1,10 +1,42 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert } from 'react-native';
 import { useAuth } from '../context/AuthContext';
-import { colors, ios } from '../theme';
+import { ios } from '../theme';
+import { useTheme } from '../context/ThemeContext';
 import i18n from '../i18n';
 
+function createProfileSetupStyles(colors) {
+  return StyleSheet.create({
+    root: { flex: 1, padding: ios.spacing.lg, paddingTop: 48, backgroundColor: colors.background },
+    title: { fontSize: 22, fontWeight: '700', color: colors.text, marginBottom: 8 },
+    sub: { fontSize: ios.fontSize.body, color: colors.textSecondary, marginBottom: 24 },
+    label: { fontSize: 13, color: colors.textSecondary, marginBottom: 6 },
+    input: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: ios.radius.md,
+      paddingHorizontal: 14,
+      paddingVertical: 12,
+      fontSize: ios.fontSize.body,
+      color: colors.text,
+      marginBottom: 16,
+      backgroundColor: colors.surface,
+    },
+    btn: {
+      backgroundColor: colors.primary,
+      paddingVertical: 14,
+      borderRadius: ios.radius.md,
+      alignItems: 'center',
+      marginTop: 8,
+    },
+    btnDisabled: { opacity: 0.6 },
+    btnText: { color: colors.white, fontWeight: '600' },
+  });
+}
+
 export default function ProfileSetupScreen() {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createProfileSetupStyles(colors), [colors]);
   const { profile, updateProfile } = useAuth();
   const [fullName, setFullName] = useState(profile?.full_name || '');
   const [phone, setPhone] = useState(profile?.phone || '');
@@ -35,39 +67,25 @@ export default function ProfileSetupScreen() {
       <Text style={styles.title}>{i18n.t('profile_setup_title')}</Text>
       <Text style={styles.sub}>{i18n.t('profile_setup_sub')}</Text>
       <Text style={styles.label}>{i18n.t('full_name')}</Text>
-      <TextInput style={styles.input} value={fullName} onChangeText={setFullName} placeholder={i18n.t('enter_full_name')} />
+      <TextInput
+        style={styles.input}
+        value={fullName}
+        onChangeText={setFullName}
+        placeholder={i18n.t('enter_full_name')}
+        placeholderTextColor={colors.placeholder}
+      />
       <Text style={styles.label}>{i18n.t('phone_number')}</Text>
-      <TextInput style={styles.input} value={phone} onChangeText={setPhone} placeholder="+962 7X XXX XXXX" keyboardType="phone-pad" />
+      <TextInput
+        style={styles.input}
+        value={phone}
+        onChangeText={setPhone}
+        placeholder="+962 7X XXX XXXX"
+        placeholderTextColor={colors.placeholder}
+        keyboardType="phone-pad"
+      />
       <TouchableOpacity style={[styles.btn, busy && styles.btnDisabled]} onPress={save} disabled={busy}>
         {busy ? <ActivityIndicator color={colors.white} /> : <Text style={styles.btnText}>{i18n.t('confirm')}</Text>}
       </TouchableOpacity>
     </View>
   );
 }
-
-const styles = StyleSheet.create({
-  root: { flex: 1, padding: ios.spacing.lg, paddingTop: 48, backgroundColor: colors.background },
-  title: { fontSize: 22, fontWeight: '700', color: colors.text, marginBottom: 8 },
-  sub: { fontSize: ios.fontSize.body, color: colors.textSecondary, marginBottom: 24 },
-  label: { fontSize: 13, color: colors.textSecondary, marginBottom: 6 },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: ios.radius.md,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: ios.fontSize.body,
-    color: colors.text,
-    marginBottom: 16,
-    backgroundColor: colors.surface,
-  },
-  btn: {
-    backgroundColor: colors.primary,
-    paddingVertical: 14,
-    borderRadius: ios.radius.md,
-    alignItems: 'center',
-    marginTop: 8,
-  },
-  btnDisabled: { opacity: 0.6 },
-  btnText: { color: colors.white, fontWeight: '600' },
-});

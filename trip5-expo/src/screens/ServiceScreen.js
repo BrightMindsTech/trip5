@@ -1,9 +1,68 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, TextInput, ScrollView } from 'react-native';
 import i18n from '../i18n';
-import { colors } from '../theme';
+import { useTheme } from '../context/ThemeContext';
+
+function createStyles(colors) {
+  return StyleSheet.create({
+    container: { flex: 1, backgroundColor: colors.background },
+    content: { padding: 24, paddingTop: 48, paddingBottom: 48 },
+    title: { fontSize: 22, fontWeight: '600', marginBottom: 24, textAlign: 'center', color: colors.text },
+    card: {
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: 20,
+      borderRadius: 12,
+      marginBottom: 16,
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+    },
+    cardSelected: { backgroundColor: colors.primaryLight, borderColor: colors.primary, borderWidth: 1 },
+    cardTitle: { fontSize: 18, fontWeight: '600', color: colors.text },
+    cardTitleSelected: { color: colors.text },
+    cardSubtitle: { fontSize: 14, color: colors.textSecondary, marginTop: 4 },
+    cardSubtitleSelected: { color: colors.textSecondary },
+    price: { fontSize: 18, fontWeight: '600', color: colors.primary },
+    priceSelected: { color: colors.primary },
+    check: { color: colors.primary, fontSize: 20 },
+    subOptions: { flexDirection: 'row', gap: 12, marginBottom: 16, marginLeft: 8 },
+    subBtn: {
+      paddingHorizontal: 16,
+      paddingVertical: 10,
+      backgroundColor: colors.border,
+      borderRadius: 8,
+    },
+    subBtnSelected: { backgroundColor: colors.primary },
+    subBtnText: { color: colors.text },
+    subBtnTextSelected: { color: colors.white, fontWeight: '600' },
+    input: {
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: 8,
+      padding: 12,
+      marginBottom: 16,
+      minHeight: 80,
+      textAlignVertical: 'top',
+      backgroundColor: colors.surface,
+      color: colors.text,
+    },
+    button: {
+      backgroundColor: colors.primary,
+      padding: 16,
+      borderRadius: 12,
+      marginTop: 16,
+      alignItems: 'center',
+    },
+    buttonDisabled: { backgroundColor: colors.disabled },
+    buttonText: { color: colors.white, fontSize: 18, fontWeight: '600' },
+  });
+}
 
 export default function ServiceScreen({ order, updateOrder, goNext, canProceed }) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const [showPrivate, setShowPrivate] = useState(false);
   const [showAirport, setShowAirport] = useState(false);
   const [showInstant, setShowInstant] = useState(false);
@@ -131,6 +190,7 @@ export default function ServiceScreen({ order, updateOrder, goNext, canProceed }
         <TextInput
           style={styles.input}
           placeholder={i18n.t('enter_description')}
+          placeholderTextColor={isDark ? colors.textMuted : colors.placeholder}
           value={instantDesc}
           onChangeText={(t) => {
             setInstantDesc(t);
@@ -150,57 +210,3 @@ export default function ServiceScreen({ order, updateOrder, goNext, canProceed }
     </ScrollView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.background },
-  content: { padding: 24, paddingTop: 48, paddingBottom: 48 },
-  title: { fontSize: 22, fontWeight: '600', marginBottom: 24, textAlign: 'center', color: colors.text },
-  card: {
-    backgroundColor: colors.surface,
-    borderWidth: 1,
-    borderColor: colors.border,
-    padding: 20,
-    borderRadius: 12,
-    marginBottom: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  cardSelected: { backgroundColor: colors.primaryLight, borderColor: colors.primary, borderWidth: 1 },
-  cardTitle: { fontSize: 18, fontWeight: '600', color: colors.text },
-  cardTitleSelected: { color: colors.text },
-  cardSubtitle: { fontSize: 14, color: colors.textSecondary, marginTop: 4 },
-  cardSubtitleSelected: { color: colors.textSecondary },
-  price: { fontSize: 18, fontWeight: '600', color: colors.primary },
-  priceSelected: { color: colors.primary },
-  check: { color: colors.primary, fontSize: 20 },
-  subOptions: { flexDirection: 'row', gap: 12, marginBottom: 16, marginLeft: 8 },
-  subBtn: {
-    paddingHorizontal: 16,
-    paddingVertical: 10,
-    backgroundColor: colors.border,
-    borderRadius: 8,
-  },
-  subBtnSelected: { backgroundColor: colors.primary },
-  subBtnText: { color: colors.text },
-  subBtnTextSelected: { color: colors.white, fontWeight: '600' },
-  input: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: 8,
-    padding: 12,
-    marginBottom: 16,
-    minHeight: 80,
-    textAlignVertical: 'top',
-    backgroundColor: colors.surface,
-  },
-  button: {
-    backgroundColor: colors.primary,
-    padding: 16,
-    borderRadius: 12,
-    marginTop: 16,
-    alignItems: 'center',
-  },
-  buttonDisabled: { backgroundColor: colors.disabled },
-  buttonText: { color: colors.white, fontSize: 18, fontWeight: '600' },
-});

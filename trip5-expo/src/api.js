@@ -40,6 +40,12 @@ export async function submitOrder(order, accessToken) {
     });
     const data = await response.json().catch(() => ({}));
     if (!response.ok) {
+      const parts = [data.error, data.message, data.detail].filter(Boolean);
+      const fromBody = parts.length ? parts.join(' — ') : '';
+      const gatewayHint =
+        response.status >= 502 && response.status <= 504
+          ? ' Gateway error: open Supabase → Edge Functions → orders → Logs, or redeploy: supabase functions deploy orders.'
+          : '';
       const msg =
         response.status === 401
           ? data.error || 'Please sign in again.'
@@ -47,8 +53,8 @@ export async function submitOrder(order, accessToken) {
             ? useEdgeFunctions()
               ? `Not found (404). Deploy Edge Functions: orders — ${Config.edgeFunctionsBaseURL}/orders`
               : `Server error (404). Set EXPO_PUBLIC_API_BASE_URL in .env to your API URL.`
-            : data.error || data.message || `Server error (${response.status})`;
-      throw new Error(msg);
+            : fromBody || `Server error (${response.status})`;
+      throw new Error(`${msg}${gatewayHint}`.trim());
     }
     return data;
   } catch (err) {

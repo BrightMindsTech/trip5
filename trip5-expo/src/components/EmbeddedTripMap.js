@@ -10,6 +10,8 @@ import {
   Pressable,
   useWindowDimensions,
   ScrollView,
+  Keyboard,
+  Platform,
 } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { GooglePlacesAutocomplete } from 'react-native-google-places-autocomplete';
@@ -18,7 +20,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import i18n from '../i18n';
 import { Config } from '../config';
-import { colors, ios } from '../theme';
+import { googleMapDarkStyle, ios } from '../theme';
+import { useTheme } from '../context/ThemeContext';
 import { fetchDirectionsCoordinates } from '../utils/mapsDirections';
 
 const JORDAN_CENTER = { latitude: 32.5565, longitude: 35.8467 };
@@ -139,6 +142,8 @@ function MapOverlays({
   destinationDraggable,
   onPickupDragEnd,
   onDestinationDragEnd,
+  colors,
+  styles,
 }) {
   const pickupCoord =
     order.pickup?.latitude != null && order.pickup?.longitude != null
@@ -250,10 +255,20 @@ export default function EmbeddedTripMap({
   setActiveMode,
   onNext = () => {},
   nextDisabled = false,
+  /** Distance from top of screen to place search bar (below step progress). */
+  floatingSearchTop,
+  onRequestBack,
 }) {
   const insets = useSafeAreaInsets();
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createEmbeddedTripMapStyles(colors, isDark), [colors, isDark]);
+  /** White FAB + `logoDark` icon was fine in light mode; in dark mode white FAB + light purple read as low-contrast. */
+  const fabLocateIconColor = isDark ? colors.primary : colors.logoDark;
+  const searchBarTop = floatingSearchTop ?? insets.top + 8;
   const { height: windowHeight } = useWindowDimensions();
   const [loadingLocation, setLoadingLocation] = useState(false);
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [searchInputFocused, setSearchInputFocused] = useState(false);
   const [sheetHeight, setSheetHeight] = useState(260);
   const [bleedOffset, setBleedOffset] = useState(0);
   const [routePathCoords, setRoutePathCoords] = useState(null);
@@ -267,8 +282,20 @@ export default function EmbeddedTripMap({
   const orderDestRef = useRef(order.destination);
   orderPickRef.current = order.pickup;
   orderDestRef.current = order.destination;
+  const initialAutoLocateStartedRef = useRef(false);
 
   const skipDestination = order.skipDestination === true;
+
+  useEffect(() => {
+    const showEvt = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvt = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+    const subShow = Keyboard.addListener(showEvt, () => setKeyboardVisible(true));
+    const subHide = Keyboard.addListener(hideEvt, () => setKeyboardVisible(false));
+    return () => {
+      subShow.remove();
+      subHide.remove();
+    };
+  }, []);
 
   const placesQuery = useMemo(
     () => ({
@@ -589,6 +616,53 @@ export default function EmbeddedTripMap({
     }
   };
 
+  /**
+   * First open of the stops map: center on device GPS and set pickup (same as the GPS control).
+   * Skips when pickup already exists, when focusing a preset dropoff, or while waiting for parent
+   * airport route prefill. Re-runs when order updates (child effects run before parent on first paint).
+   */
+  useEffect(() => {
+    if (initialAutoLocateStartedRef.current) return;
+
+    const o = order;
+    const r = o.route;
+
+    if (o.pickup?.latitude != null && o.pickup?.longitude != null) return;
+
+    if (
+      !skipDestination &&
+      o.destination?.latitude != null &&
+      o.destination?.longitude != null &&
+      activeMode === 'destination'
+    ) {
+      return;
+    }
+
+    if (
+      ['airport_to_amman', 'airport_to_irbid'].includes(r) &&
+      (o.pickup?.latitude == null || o.pickup?.longitude == null)
+    ) {
+      return;
+    }
+    if (
+      ['amman_to_airport', 'irbid_to_airport'].includes(r) &&
+      (o.destination?.latitude == null || o.destination?.longitude == null)
+    ) {
+      return;
+    }
+
+    initialAutoLocateStartedRef.current = true;
+    applyPickupFromDevice();
+  }, [
+    order.route,
+    order.pickup?.latitude,
+    order.pickup?.longitude,
+    order.destination?.latitude,
+    order.destination?.longitude,
+    activeMode,
+    skipDestination,
+  ]);
+
   const hasPlacesKey = Config.googleMapsApiKey && Config.googleMapsApiKey.length > 0;
 
   const onToggleSkip = (value) => {
@@ -642,6 +716,7 @@ export default function EmbeddedTripMap({
           scrollEnabled
           zoomEnabled
           zoomTapEnabled
+          customMapStyle={isDark ? googleMapDarkStyle : undefined}
         >
           <MapOverlays
             order={order}
@@ -651,8 +726,65 @@ export default function EmbeddedTripMap({
             destinationDraggable={destinationDraggable}
             onPickupDragEnd={handlePickupDragEnd}
             onDestinationDragEnd={handleDestinationDragEnd}
+            colors={colors}
+            styles={styles}
           />
         </MapView>
+
+        <View style={[styles.floatingSearchOuter, { top: searchBarTop }]} pointerEvents="box-none">
+          <View style={styles.floatingSearchRow}>
+            <View style={styles.searchPillWrap}>
+              <View style={styles.searchPill}>
+              {hasPlacesKey ? (
+                <GooglePlacesAutocomplete
+                  ref={placesRef}
+                  suppressDefaultStyles
+                  placeholder={
+                    activeMode === 'pickup'
+                      ? i18n.t('search_pickup_short')
+                      : i18n.t('search_dropoff_short')
+                  }
+                  onPress={(data, details) => handlePlaceSelect(data, details, activeMode)}
+                  fetchDetails
+                  query={placesQuery}
+                  styles={{
+                    container: styles.placesContainer,
+                    textInputContainer: styles.placesInputContainer,
+                    textInput: styles.placesInputFloating,
+                    listView: styles.placesList,
+                    row: styles.placesRow,
+                    separator: styles.placesSep,
+                    description: styles.placesDesc,
+                  }}
+                  textInputProps={{
+                    placeholderTextColor: colors.placeholder,
+                    editable: !(skipDestination && activeMode === 'destination'),
+                    onFocus: () => setSearchInputFocused(true),
+                    onBlur: () => setSearchInputFocused(false),
+                  }}
+                  enablePoweredByContainer={false}
+                />
+              ) : (
+                <Text style={styles.noKeyHint}>{i18n.t('maps_key_hint')}</Text>
+              )}
+              </View>
+            </View>
+            {keyboardVisible && searchInputFocused ? (
+              <Pressable
+                onPress={() => {
+                  Keyboard.dismiss();
+                  setSearchInputFocused(false);
+                }}
+                style={({ pressed }) => [styles.keyboardDismissBtn, pressed && styles.keyboardDismissBtnPressed]}
+                accessibilityRole="button"
+                accessibilityLabel={i18n.t('map_hide_keyboard')}
+                hitSlop={{ top: 10, bottom: 10, left: 8, right: 8 }}
+              >
+                <Ionicons name="chevron-down" size={22} color={colors.primaryDark} />
+              </Pressable>
+            ) : null}
+          </View>
+        </View>
 
         {!skipDestination && activeMode === 'destination' ? (
           <TouchableOpacity
@@ -663,9 +795,9 @@ export default function EmbeddedTripMap({
             accessibilityLabel={i18n.t('use_my_location')}
           >
             {loadingLocation ? (
-              <ActivityIndicator color={colors.primary} />
+              <ActivityIndicator color={fabLocateIconColor} />
             ) : (
-              <Ionicons name="navigate" size={22} color={colors.text} />
+              <Ionicons name="navigate" size={22} color={fabLocateIconColor} />
             )}
           </TouchableOpacity>
         ) : null}
@@ -712,54 +844,12 @@ export default function EmbeddedTripMap({
               accessibilityLabel={`${i18n.t('use_my_location')}: ${i18n.t('pickup_location')}`}
             >
               {loadingLocation ? (
-                <ActivityIndicator size="small" color={colors.primary} />
+                <ActivityIndicator size="small" color={colors.primaryDark} />
               ) : (
-                <Ionicons name="navigate" size={18} color={colors.primary} />
+                <Ionicons name="navigate" size={22} color={colors.primaryDark} />
               )}
               <Text style={styles.pickupGpsBtnText}>{i18n.t('use_my_location')}</Text>
-              <Text style={styles.pickupGpsBtnHint}>{i18n.t('pickup_location')}</Text>
             </Pressable>
-
-            <View style={styles.searchJordanRow}>
-              <Ionicons name="search" size={18} color={colors.primary} />
-              <Text style={styles.searchJordanText}>{i18n.t('search_places')}</Text>
-            </View>
-
-            {/* Places autocomplete must NOT sit inside ScrollView: its FlatList is a VirtualizedList and nested lists collapse or clip. */}
-            <View style={styles.searchPillWrap}>
-              <View style={styles.searchPill}>
-                {hasPlacesKey ? (
-                  <GooglePlacesAutocomplete
-                    ref={placesRef}
-                    suppressDefaultStyles
-                    placeholder={
-                      activeMode === 'pickup'
-                        ? i18n.t('search_pickup_short')
-                        : i18n.t('search_dropoff_short')
-                    }
-                    onPress={(data, details) => handlePlaceSelect(data, details, activeMode)}
-                    fetchDetails
-                    query={placesQuery}
-                    styles={{
-                      container: styles.placesContainer,
-                      textInputContainer: styles.placesInputContainer,
-                      textInput: styles.placesInput,
-                      listView: styles.placesList,
-                      row: styles.placesRow,
-                      separator: styles.placesSep,
-                      description: styles.placesDesc,
-                    }}
-                    textInputProps={{
-                      placeholderTextColor: colors.placeholder,
-                      editable: !(skipDestination && activeMode === 'destination'),
-                    }}
-                    enablePoweredByContainer={false}
-                  />
-                ) : (
-                  <Text style={styles.noKeyHint}>{i18n.t('maps_key_hint')}</Text>
-                )}
-              </View>
-            </View>
 
             <ScrollView
               style={{ maxHeight: scrollMaxH }}
@@ -800,18 +890,37 @@ export default function EmbeddedTripMap({
               </View>
             </ScrollView>
 
-            <Pressable
-              style={({ pressed }) => [
-                styles.nextButton,
-                nextDisabled && styles.nextButtonDisabled,
-                pressed && !nextDisabled && styles.nextButtonPressed,
-              ]}
-              onPress={onNext}
-              disabled={nextDisabled}
-            >
-              <Text style={styles.nextButtonText}>{i18n.t('next')}</Text>
-              <Text style={styles.nextButtonArrow}>→</Text>
-            </Pressable>
+            <View style={styles.bottomActionsRow}>
+              {typeof onRequestBack === 'function' ? (
+                <Pressable
+                  onPress={onRequestBack}
+                  style={({ pressed }) => [styles.sheetBackAction, pressed && styles.sheetBackActionPressed]}
+                  hitSlop={{ top: 8, bottom: 8, left: 4, right: 4 }}
+                >
+                  <Ionicons name="chevron-back" size={22} color={colors.primary} />
+                  <Text style={styles.sheetBackActionText}>{i18n.t('back')}</Text>
+                </Pressable>
+              ) : (
+                <View style={styles.sheetBackActionSpacer} />
+              )}
+              <Pressable
+                style={({ pressed }) => [
+                  styles.nextButton,
+                  styles.nextButtonInRow,
+                  nextDisabled && styles.nextButtonDisabled,
+                  pressed && !nextDisabled && styles.nextButtonPressed,
+                ]}
+                onPress={onNext}
+                disabled={nextDisabled}
+                accessibilityRole="button"
+                accessibilityState={{ disabled: nextDisabled }}
+              >
+                <Text style={[styles.nextButtonText, nextDisabled && styles.nextButtonTextDisabled]}>
+                  {i18n.t('next')}
+                </Text>
+                <Text style={[styles.nextButtonArrow, nextDisabled && styles.nextButtonArrowDisabled]}>→</Text>
+              </Pressable>
+            </View>
           </View>
         </View>
       </View>
@@ -819,7 +928,12 @@ export default function EmbeddedTripMap({
   );
 }
 
-const styles = StyleSheet.create({
+function createEmbeddedTripMapStyles(colors, isDark) {
+  /** Muted edges for sheet tabs / GPS — avoids bright lavender borders on dark UI. */
+  const sheetEdge = isDark ? 'rgba(255, 255, 255, 0.11)' : 'rgba(30, 27, 75, 0.16)';
+  const sheetEdgeActive = isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(30, 27, 75, 0.26)';
+
+  return StyleSheet.create({
   root: { flex: 1, width: '100%', minHeight: 0 },
   mapShell: {
     flex: 1,
@@ -840,9 +954,9 @@ const styles = StyleSheet.create({
   },
   bottomSheetInner: {
     backgroundColor: colors.surface,
-    borderTopLeftRadius: ios.radius.xxl,
-    borderTopRightRadius: ios.radius.xxl,
-    paddingHorizontal: ios.spacing.lg,
+    borderTopLeftRadius: ios.radius.xl,
+    borderTopRightRadius: ios.radius.xl,
+    paddingHorizontal: ios.spacing.md,
     paddingTop: ios.spacing.sm,
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
@@ -854,38 +968,76 @@ const styles = StyleSheet.create({
   },
   sheetHandle: {
     alignSelf: 'center',
-    width: 40,
-    height: 4,
+    width: 36,
+    height: 3,
     borderRadius: 2,
     backgroundColor: colors.border,
-    marginBottom: ios.spacing.sm,
+    marginBottom: ios.spacing.xs,
+    opacity: 0.85,
+  },
+  floatingSearchRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+  },
+  keyboardDismissBtn: {
+    marginLeft: ios.spacing.sm,
+    paddingVertical: ios.spacing.sm,
+    paddingHorizontal: 4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    alignSelf: 'center',
+  },
+  keyboardDismissBtnPressed: { opacity: 0.55 },
+  bottomActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    marginTop: ios.spacing.md,
+  },
+  sheetBackAction: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: ios.spacing.md,
+    paddingHorizontal: ios.spacing.sm,
+    minWidth: 92,
+  },
+  sheetBackActionPressed: { opacity: 0.65 },
+  sheetBackActionText: {
+    marginLeft: 2,
+    fontSize: ios.fontSize.subhead,
+    fontWeight: ios.fontWeight.semibold,
+    color: colors.primary,
+  },
+  sheetBackActionSpacer: {
+    width: 92,
+  },
+  floatingSearchOuter: {
+    position: 'absolute',
+    left: ios.spacing.md,
+    right: ios.spacing.md,
+    zIndex: 25,
+    elevation: 25,
   },
   bottomScrollContent: {
     paddingBottom: ios.spacing.sm,
   },
-  searchJordanRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 8,
-  },
-  searchJordanText: {
-    flex: 1,
-    marginLeft: 8,
-    fontSize: ios.fontSize.caption,
-    fontWeight: ios.fontWeight.semibold,
-    color: colors.textSecondary,
-  },
   searchPillWrap: {
+    flex: 1,
+    minWidth: 0,
     zIndex: 30,
     elevation: 30,
-    marginBottom: 10,
   },
   searchPill: {
-    backgroundColor: colors.background,
-    borderRadius: ios.radius.md,
-    borderWidth: 1,
+    backgroundColor: colors.surface,
+    borderRadius: ios.radius.lg,
+    borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     overflow: 'visible',
+    shadowColor: '#1E1B4B',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.12,
+    shadowRadius: 12,
+    elevation: 8,
   },
   placesContainer: {
     flexGrow: 0,
@@ -899,6 +1051,13 @@ const styles = StyleSheet.create({
     height: 48,
     paddingHorizontal: 14,
     fontSize: 16,
+    color: colors.text,
+    backgroundColor: 'transparent',
+  },
+  placesInputFloating: {
+    height: 46,
+    paddingHorizontal: ios.spacing.md,
+    fontSize: ios.fontSize.callout,
     color: colors.text,
     backgroundColor: 'transparent',
   },
@@ -918,7 +1077,7 @@ const styles = StyleSheet.create({
     width: 50,
     height: 50,
     borderRadius: 25,
-    backgroundColor: colors.white,
+    backgroundColor: isDark ? colors.surface : colors.white,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
@@ -952,7 +1111,8 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 4,
   },
-  markerLabelText: { color: colors.text, fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
+  /** Dark ink on white pill — `colors.text` is light in dark mode and was invisible here. */
+  markerLabelText: { color: colors.logoDark, fontSize: 11, fontWeight: '800', letterSpacing: 0.5 },
   markerLabelDrop: {
     backgroundColor: colors.primaryLight,
     paddingHorizontal: 10,
@@ -1012,50 +1172,55 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     paddingHorizontal: 4,
   },
-  modeTabs: { flexDirection: 'row', marginBottom: 8 },
+  modeTabs: { flexDirection: 'row', marginBottom: ios.spacing.sm, gap: 8 },
   pickupGpsBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     alignSelf: 'stretch',
-    gap: 8,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    marginBottom: 10,
-    borderRadius: 12,
-    backgroundColor: colors.background,
+    gap: ios.spacing.sm,
+    paddingVertical: ios.spacing.md,
+    paddingHorizontal: ios.spacing.md,
+    marginBottom: ios.spacing.sm,
+    borderRadius: ios.radius.lg,
+    backgroundColor: colors.surface,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: sheetEdge,
   },
-  pickupGpsBtnPressed: { opacity: 0.88 },
+  pickupGpsBtnPressed: { opacity: 0.92, backgroundColor: colors.background },
   pickupGpsBtnDisabled: { opacity: 0.65 },
   pickupGpsBtnText: {
     flex: 1,
-    fontSize: 14,
-    fontWeight: '700',
-    color: colors.text,
-  },
-  pickupGpsBtnHint: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    maxWidth: '42%',
+    fontSize: ios.fontSize.subhead,
+    fontWeight: ios.fontWeight.semibold,
+    color: colors.primaryDark,
+    letterSpacing: -0.2,
   },
   tab: {
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 11,
-    marginHorizontal: 4,
-    borderRadius: 12,
+    paddingVertical: ios.spacing.md,
+    paddingHorizontal: 8,
+    borderRadius: ios.radius.lg,
     backgroundColor: colors.background,
     borderWidth: 1,
-    borderColor: colors.border,
+    borderColor: sheetEdge,
+    minHeight: ios.minTouchTarget,
   },
-  tabActive: { borderColor: colors.primary, backgroundColor: colors.primaryLight },
+  tabActive: {
+    borderColor: sheetEdgeActive,
+    backgroundColor: colors.primaryLight,
+    borderWidth: 1,
+  },
   tabDisabled: { opacity: 0.45 },
-  tabText: { fontSize: 13, fontWeight: '600', color: colors.textSecondary, marginLeft: 8 },
-  tabTextActive: { color: colors.text },
+  tabText: {
+    fontSize: ios.fontSize.subhead,
+    fontWeight: ios.fontWeight.semibold,
+    color: colors.textMuted,
+    marginLeft: 8,
+  },
+  tabTextActive: { color: colors.text, fontWeight: ios.fontWeight.bold },
   dot: { width: 10, height: 10, borderRadius: 5 },
   dotPickup: { backgroundColor: colors.white, borderWidth: 2, borderColor: colors.primary },
   dotDest: { backgroundColor: colors.primary, borderWidth: 2, borderColor: colors.white },
@@ -1068,23 +1233,50 @@ const styles = StyleSheet.create({
     borderTopWidth: StyleSheet.hairlineWidth,
     borderTopColor: colors.border,
   },
-  skipLabel: { fontSize: 14, fontWeight: '600', color: colors.text, flex: 1, paddingRight: 12 },
+  skipLabel: {
+    fontSize: ios.fontSize.subhead,
+    fontWeight: ios.fontWeight.semibold,
+    color: colors.text,
+    flex: 1,
+    paddingRight: 12,
+    lineHeight: 20,
+  },
   nextButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.primary,
+    backgroundColor: colors.primaryDark,
     paddingVertical: ios.spacing.lg,
-    paddingHorizontal: ios.spacing.xxl,
+    paddingHorizontal: ios.spacing.lg,
     borderRadius: ios.radius.lg,
-    marginTop: ios.spacing.md,
-    minHeight: 50,
+    minHeight: ios.minTouchTarget,
+    shadowColor: colors.primaryDark,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  nextButtonDisabled: { backgroundColor: colors.disabled, opacity: 0.85 },
-  nextButtonPressed: { opacity: 0.88 },
+  nextButtonInRow: {
+    flex: 1,
+    marginLeft: ios.spacing.sm,
+  },
+  nextButtonDisabled: {
+    backgroundColor: colors.metallic,
+    opacity: 1,
+    borderWidth: 1,
+    borderColor: colors.border,
+    shadowOpacity: 0,
+    elevation: 0,
+  },
+  nextButtonPressed: { opacity: 0.92 },
   nextButtonText: {
     color: colors.white,
     fontSize: ios.fontSize.body,
+    fontWeight: ios.fontWeight.bold,
+    letterSpacing: 0.2,
+  },
+  nextButtonTextDisabled: {
+    color: colors.textMuted,
     fontWeight: ios.fontWeight.semibold,
   },
   nextButtonArrow: {
@@ -1093,4 +1285,8 @@ const styles = StyleSheet.create({
     fontWeight: ios.fontWeight.bold,
     marginLeft: 8,
   },
+  nextButtonArrowDisabled: {
+    color: colors.textMuted,
+  },
 });
+}

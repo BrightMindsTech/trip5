@@ -38,6 +38,19 @@ serve(async (req) => {
     });
   }
 
+  try {
+    return await handlePostOrders(req);
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    console.error("orders function uncaught:", e);
+    return new Response(JSON.stringify({ error: "Internal error", detail: msg }), {
+      status: 500,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    });
+  }
+});
+
+async function handlePostOrders(req: Request) {
   const authHeader = req.headers.get("Authorization") || "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
   if (!token) {
@@ -148,24 +161,52 @@ serve(async (req) => {
     status: "pending",
   };
 
-  const { data: inserted, error: insertErr } = await supabase.from("orders").insert(row).select("id").single();
+  const { data: inserted, error: insertErr } = await supabase.from("orders").insert(row).select("id, trip_reference").single();
 
   if (insertErr) {
     console.error("Insert order:", insertErr);
-    return new Response(JSON.stringify({ error: "Failed to save order" }), {
+    return new Response(
+      JSON.stringify({ error: "Failed to save order", detail: insertErr.message || String(insertErr) }),
+      {
+        status: 500,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      },
+    );
+  }
+
+  const orderId = inserted?.id as string | undefined;
+  if (!orderId) {
+    return new Response(JSON.stringify({ error: "Failed to save order", detail: "No id returned from insert" }), {
       status: 500,
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   }
 
+  let dispatch = { offerCreated: false as boolean, reason: "unknown" as string, eligibleDriverCount: 0 };
   try {
-    await assignNextDriver(supabase, inserted.id as string);
+    dispatch = await assignNextDriver(supabase, orderId);
   } catch (e) {
     console.error("assignNextDriver after order:", e);
+    dispatch = { offerCreated: false, reason: "assign_exception", eligibleDriverCount: 0 };
   }
 
-  return new Response(JSON.stringify({ success: true, id: inserted.id }), {
-    status: 200,
-    headers: { ...corsHeaders, "Content-Type": "application/json" },
-  });
-});
+  const tripRef = (inserted as { trip_reference?: string } | null)?.trip_reference ?? null;
+
+  return new Response(
+    JSON.stringify({
+      success: true,
+      id: orderId,
+      trip_reference: tripRef,
+      dispatch: {
+        offerCreated: dispatch.offerCreated,
+        reason: dispatch.reason,
+        eligibleDriverCount: dispatch.eligibleDriverCount ?? 0,
+        ...(dispatch.insertError ? { insertError: dispatch.insertError } : {}),
+      },
+    }),
+    {
+      status: 200,
+      headers: { ...corsHeaders, "Content-Type": "application/json" },
+    },
+  );
+}

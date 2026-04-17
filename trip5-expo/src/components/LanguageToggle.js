@@ -1,9 +1,31 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import { Pressable, Text, StyleSheet } from 'react-native';
 import i18n, { setLanguage } from '../i18n';
-import { colors, ios } from '../theme';
+import { ios } from '../theme';
+import { useTheme } from '../context/ThemeContext';
+
+function createStyles(colors) {
+  return StyleSheet.create({
+    btn: {
+      paddingHorizontal: ios.spacing.md,
+      paddingVertical: ios.spacing.sm,
+      backgroundColor: colors.surface,
+      borderRadius: 20,
+      borderWidth: StyleSheet.hairlineWidth,
+      borderColor: colors.border,
+    },
+    btnPressed: { opacity: 0.7 },
+    text: {
+      color: colors.primary,
+      fontWeight: ios.fontWeight.semibold,
+      fontSize: ios.fontSize.footnote,
+    },
+  });
+}
 
 export default function LanguageToggle({ onToggle, textStyle, buttonStyle }) {
+  const { colors } = useTheme();
+  const styles = useMemo(() => createStyles(colors), [colors]);
   const isArabic = i18n.locale === 'ar';
   const toggle = async () => {
     const next = isArabic ? 'en' : 'ar';
@@ -20,20 +42,3 @@ export default function LanguageToggle({ onToggle, textStyle, buttonStyle }) {
     </Pressable>
   );
 }
-
-const styles = StyleSheet.create({
-  btn: {
-    paddingHorizontal: ios.spacing.md,
-    paddingVertical: ios.spacing.sm,
-    backgroundColor: colors.surface,
-    borderRadius: 20,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-  },
-  btnPressed: { opacity: 0.7 },
-  text: {
-    color: colors.primary,
-    fontWeight: ios.fontWeight.semibold,
-    fontSize: ios.fontSize.footnote,
-  },
-});

@@ -16,7 +16,8 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import i18n, { initI18n } from '../i18n';
-import { colors, ios } from '../theme';
+import { ios } from '../theme';
+import { useTheme } from '../context/ThemeContext';
 import { useSavedPlaces } from '../hooks/useSavedPlaces';
 import MapLocationPicker from '../components/MapLocationPicker';
 import { useFocusEffect } from '@react-navigation/native';
@@ -37,6 +38,8 @@ function kindIcon(kind) {
 }
 
 export default function SavedPlacesScreen({ navigation }) {
+  const { colors, isDark } = useTheme();
+  const styles = useMemo(() => createSavedPlacesStyles(colors), [colors]);
   const { loading, error, rows, refresh, insertPlace, updatePlace, deletePlace } = useSavedPlaces();
   const [localeState, setLocaleState] = useState(i18n.locale);
   const [formOpen, setFormOpen] = useState(false);
@@ -209,7 +212,7 @@ export default function SavedPlacesScreen({ navigation }) {
 
   const header = (
     <View style={[styles.headerWrapper, Platform.OS !== 'ios' && styles.headerWrapperAndroid]}>
-      {Platform.OS === 'ios' ? <BlurView intensity={80} tint="light" style={StyleSheet.absoluteFill} /> : null}
+      {Platform.OS === 'ios' ? <BlurView intensity={80} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} /> : null}
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
@@ -342,7 +345,8 @@ export default function SavedPlacesScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+function createSavedPlacesStyles(colors) {
+  return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   safeInner: { flex: 1 },
   headerWrapper: {
@@ -483,3 +487,4 @@ const styles = StyleSheet.create({
   },
   btnPrimaryText: { color: colors.white, fontWeight: ios.fontWeight.semibold },
 });
+}
