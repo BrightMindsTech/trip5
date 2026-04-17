@@ -1,7 +1,6 @@
 import React, { useCallback, useContext, useMemo, useState } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, ScrollView, Platform, Pressable } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import i18n, { initI18n } from '../i18n';
 import { ios } from '../theme';
@@ -10,6 +9,7 @@ import { useAuth } from '../context/AuthContext';
 import { LocaleTabContext } from '../context/LocaleTabContext';
 import LanguageToggle from '../components/LanguageToggle';
 import WalletModal from '../components/WalletModal';
+import DriverSubscriptionCard from '../components/DriverSubscriptionCard';
 import { useFocusEffect } from '@react-navigation/native';
 
 /** Appearance options: icons match Auth (sun/moon); auto uses clock for Jordan schedule. */
@@ -22,15 +22,15 @@ const THEME_OPTIONS = [
 function createStyles(colors) {
   return StyleSheet.create({
     safe: { flex: 1, backgroundColor: colors.background },
-    safeInner: { flex: 1 },
+    safeInner: { flex: 1, backgroundColor: 'transparent' },
     headerWrapper: {
       position: 'relative',
-      overflow: 'hidden',
-      borderBottomWidth: StyleSheet.hairlineWidth,
-      borderBottomColor: colors.border,
+      backgroundColor: 'transparent',
+      elevation: 0,
     },
     headerWrapperAndroid: {
-      backgroundColor: colors.surface,
+      backgroundColor: 'transparent',
+      elevation: 0,
     },
     header: {
       flexDirection: 'row',
@@ -39,6 +39,7 @@ function createStyles(colors) {
       paddingHorizontal: ios.spacing.lg,
       paddingVertical: ios.spacing.md,
       minHeight: 44,
+      backgroundColor: 'transparent',
     },
     headerTitle: {
       fontSize: ios.fontSize.title3,
@@ -185,9 +186,9 @@ function createStyles(colors) {
 }
 
 export default function AccountScreen() {
-  const { colors, isDark, preference, setPreference } = useTheme();
+  const { colors, preference, setPreference } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
-  const { signOut, profile } = useAuth();
+  const { signOut, profile, isDriver } = useAuth();
   const bumpTabs = useContext(LocaleTabContext);
   const [walletVisible, setWalletVisible] = useState(false);
   const [localeState, setLocaleState] = useState(i18n.locale);
@@ -215,9 +216,6 @@ export default function AccountScreen() {
 
   const header = (
     <View style={[styles.headerWrapper, Platform.OS !== 'ios' && styles.headerWrapperAndroid]}>
-      {Platform.OS === 'ios' ? (
-        <BlurView intensity={80} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
-      ) : null}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>{i18n.t('account_title')}</Text>
       </View>
@@ -243,6 +241,8 @@ export default function AccountScreen() {
             <Text style={styles.profileName}>{String(profile?.full_name || '—').trim() || '—'}</Text>
             <Text style={styles.profilePhone}>{String(profile?.phone || '').trim() || '—'}</Text>
           </View>
+
+          {isDriver ? <DriverSubscriptionCard /> : null}
 
           <TouchableOpacity
             style={styles.row}

@@ -16,7 +16,6 @@ import {
   Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import i18n, { initI18n } from '../i18n';
 import { ios } from '../theme';
@@ -31,6 +30,9 @@ import { useFocusEffect } from '@react-navigation/native';
 const ACCENT_DONE = '#22C55E';
 const ACCENT_CANCEL = '#94A3B8';
 
+/** 1s polling overlapped requests; a slow 401 could finish after a fresh 200 and flash "Please sign in again." */
+const DRIVER_JOBS_POLL_MS = 5000;
+
 function nextActionForStatus(status) {
   const s = String(status || '').toLowerCase();
   if (s === 'confirmed') return { labelKey: 'driver_start_driving', next: 'driver_en_route' };
@@ -40,9 +42,9 @@ function nextActionForStatus(status) {
 }
 
 export default function DriverHomeScreen() {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const styles = useMemo(() => createDriverHomeStyles(colors), [colors]);
-  const { accessToken, profile, session } = useAuth();
+  const { accessToken, profile, session, loading: authLoading } = useAuth();
   const userId = session?.user?.id;
   const { width: windowWidth } = useWindowDimensions();
   const barMaxWidth = Math.min(windowWidth - 48, 400);
@@ -59,11 +61,36 @@ export default function DriverHomeScreen() {
   const [pastErr, setPastErr] = useState(null);
   const progressAnim = useRef(new Animated.Value(1)).current;
   const animOfferId = useRef(null);
+  const loadGen = useRef(0);
 
   const load = useCallback(async () => {
-    setError(null);
+    const myGen = ++loadGen.current;
+    let token = accessToken;
     try {
-      const data = await getDriverOrders(accessToken);
+      const { data: sessionData } = await supabase.auth.getSession();
+      token = sessionData?.session?.access_token ?? accessToken ?? null;
+    } catch {
+      token = accessToken ?? null;
+    }
+
+    if (!token) {
+      if (myGen !== loadGen.current) return;
+      if (authLoading) {
+        setError(null);
+        return;
+      }
+      setError('Please sign in again.');
+      setIncomingOffer(null);
+      setMine([]);
+      setOfferVisible(false);
+      setSubscriptionOk(isDriverSubscriptionActive(profile?.driver_subscription_valid_until));
+      return;
+    }
+
+    try {
+      const data = await getDriverOrders(token);
+      if (myGen !== loadGen.current) return;
+      setError(null);
       if (typeof data.subscriptionActive === 'boolean') {
         setSubscriptionOk(data.subscriptionActive);
       } else {
@@ -78,13 +105,14 @@ export default function DriverHomeScreen() {
         setOfferVisible(false);
       }
     } catch (e) {
+      if (myGen !== loadGen.current) return;
       setError(e?.message || i18n.t('driver_error'));
       setIncomingOffer(null);
       setMine([]);
       setOfferVisible(false);
       setSubscriptionOk(isDriverSubscriptionActive(profile?.driver_subscription_valid_until));
     }
-  }, [accessToken, profile?.driver_subscription_valid_until]);
+  }, [accessToken, authLoading, profile?.driver_subscription_valid_until]);
 
   const loadPastRides = useCallback(async () => {
     if (!userId) {
@@ -132,7 +160,7 @@ export default function DriverHomeScreen() {
     load().finally(() => setLoading(false));
     const poll = setInterval(() => {
       load();
-    }, 1000);
+    }, DRIVER_JOBS_POLL_MS);
     return () => clearInterval(poll);
   }, [load]);
 
@@ -358,7 +386,6 @@ export default function DriverHomeScreen() {
 
   const header = (
     <View style={[styles.headerWrapper, Platform.OS !== 'ios' && styles.headerWrapperAndroid]}>
-      {Platform.OS === 'ios' ? <BlurView intensity={80} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} /> : null}
       <View style={styles.headerInner}>
         <Ionicons name="car-outline" size={26} color={colors.primary} style={{ marginRight: 10 }} />
         <Text style={styles.headerTitle}>{i18n.t('driver_section_title')}</Text>
@@ -461,11 +488,10 @@ function createDriverHomeStyles(colors) {
   return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   headerWrapper: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    backgroundColor: 'transparent',
     overflow: 'hidden',
   },
-  headerWrapperAndroid: { backgroundColor: colors.surface },
+  headerWrapperAndroid: { backgroundColor: 'transparent' },
   headerInner: {
     flexDirection: 'row',
     alignItems: 'center',

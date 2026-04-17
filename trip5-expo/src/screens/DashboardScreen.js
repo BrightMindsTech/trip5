@@ -13,7 +13,6 @@ import {
   ImageBackground,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -245,16 +244,20 @@ export default function DashboardScreen({ navigation }) {
 
   const chromeHeader = (
     <View style={[styles.headerWrapper, Platform.OS !== 'ios' && styles.headerWrapperAndroid]}>
-      {Platform.OS === 'ios' ? (
-        <BlurView intensity={80} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
-      ) : null}
       <View style={styles.header}>
         <View style={styles.headerSide}>
-          <View style={styles.avatar}>
+          <TouchableOpacity
+            style={styles.avatar}
+            onPress={() => navigation.navigate('Account')}
+            activeOpacity={0.75}
+            accessibilityRole="button"
+            accessibilityLabel={i18n.t('account_title')}
+            hitSlop={{ top: 10, bottom: 10, left: 6, right: 10 }}
+          >
             <Text style={styles.avatarText}>
               {(String(profile?.full_name || '?').trim().slice(0, 1) || '?').toUpperCase()}
             </Text>
-          </View>
+          </TouchableOpacity>
         </View>
         <Text style={styles.headerTitle}>{appName}</Text>
         <View style={[styles.headerSide, styles.headerSideRight]}>
@@ -543,15 +546,15 @@ export default function DashboardScreen({ navigation }) {
 function createDashboardStyles(colors) {
   return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  safeInner: { flex: 1 },
+  safeInner: { flex: 1, backgroundColor: 'transparent' },
   headerWrapper: {
     position: 'relative',
-    overflow: 'hidden',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    backgroundColor: 'transparent',
+    elevation: 0,
   },
   headerWrapperAndroid: {
-    backgroundColor: colors.surface,
+    backgroundColor: 'transparent',
+    elevation: 0,
   },
   header: {
     flexDirection: 'row',
@@ -560,6 +563,7 @@ function createDashboardStyles(colors) {
     paddingHorizontal: ios.spacing.lg,
     paddingVertical: ios.spacing.sm,
     minHeight: 52,
+    backgroundColor: 'transparent',
   },
   headerSide: {
     width: 48,

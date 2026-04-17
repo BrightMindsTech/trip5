@@ -32,19 +32,32 @@ export function AuthProvider({ children }) {
     try {
       let { data, error } = await supabase
         .from('profiles')
-        .select('full_name, phone, is_driver, driver_score, driver_subscription_valid_until')
+        .select(
+          'full_name, phone, is_driver, driver_score, driver_rating_count, driver_subscription_valid_until'
+        )
         .eq('id', userId)
         .maybeSingle();
 
       if (error) {
         const retry = await supabase.from('profiles').select('full_name, phone, is_driver').eq('id', userId).maybeSingle();
         if (!retry.error) {
-          data = { ...retry.data, driver_score: null, driver_subscription_valid_until: null };
+          data = {
+            ...retry.data,
+            driver_score: null,
+            driver_rating_count: null,
+            driver_subscription_valid_until: null,
+          };
           error = null;
         } else {
           const retry2 = await supabase.from('profiles').select('full_name, phone').eq('id', userId).maybeSingle();
           if (!retry2.error) {
-            data = { ...retry2.data, is_driver: false, driver_score: null, driver_subscription_valid_until: null };
+            data = {
+              ...retry2.data,
+              is_driver: false,
+              driver_score: null,
+              driver_rating_count: null,
+              driver_subscription_valid_until: null,
+            };
             error = null;
           } else {
             error = retry2.error;
@@ -54,7 +67,14 @@ export function AuthProvider({ children }) {
 
       if (error) {
         console.warn('Profile load:', error.message);
-        setProfile({ full_name: '', phone: '', is_driver: false, driver_score: null, driver_subscription_valid_until: null });
+        setProfile({
+          full_name: '',
+          phone: '',
+          is_driver: false,
+          driver_score: null,
+          driver_rating_count: null,
+          driver_subscription_valid_until: null,
+        });
         return;
       }
       const row = data || {
@@ -62,12 +82,15 @@ export function AuthProvider({ children }) {
         phone: '',
         is_driver: false,
         driver_score: null,
+        driver_rating_count: null,
         driver_subscription_valid_until: null,
       };
       setProfile({
         ...row,
         is_driver: row.is_driver === true,
         driver_score: row.driver_score != null ? Number(row.driver_score) : null,
+        driver_rating_count:
+          row.driver_rating_count != null ? Math.max(0, Math.floor(Number(row.driver_rating_count))) : null,
         driver_subscription_valid_until: row.driver_subscription_valid_until ?? null,
       });
     } finally {

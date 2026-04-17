@@ -7,12 +7,8 @@ import {
   RefreshControl,
   ActivityIndicator,
   Platform,
-  TouchableOpacity,
-  Linking,
-  I18nManager,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import i18n, { initI18n } from '../i18n';
@@ -20,12 +16,9 @@ import { ios } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { Config } from '../config';
-import { isDriverSubscriptionActive } from '../utils/driverSubscription';
+import { getDriverTripRank } from '../utils/driverTripRank';
+import DriverActiveOrdersBlock from '../components/DriverActiveOrdersBlock';
 import { useFocusEffect } from '@react-navigation/native';
-
-const ACCENT_DONE = '#22C55E';
-const ACCENT_CANCEL = '#94A3B8';
 
 function getFirstName(fullName) {
   const s = String(fullName || '').trim();
@@ -38,21 +31,6 @@ function greetingKey() {
   if (h >= 5 && h < 12) return 'driver_greeting_morning';
   if (h >= 12 && h < 18) return 'driver_greeting_afternoon';
   return 'driver_greeting_evening';
-}
-
-function formatSubUntil(iso, locale) {
-  if (!iso) return '';
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString(locale === 'ar' ? 'ar-JO' : 'en-GB', {
-      weekday: 'short',
-      day: 'numeric',
-      month: 'short',
-      year: 'numeric',
-    });
-  } catch {
-    return String(iso);
-  }
 }
 
 const cardShadow =
@@ -75,17 +53,14 @@ export default function DriverDashboardScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [completedCount, setCompletedCount] = useState(0);
 
-  const subActive = isDriverSubscriptionActive(profile?.driver_subscription_valid_until);
   const score = profile?.driver_score != null && !Number.isNaN(Number(profile.driver_score)) ? Number(profile.driver_score) : null;
+  const ratingCount =
+    profile?.driver_rating_count != null && Number.isFinite(Number(profile.driver_rating_count))
+      ? Math.max(0, Math.floor(Number(profile.driver_rating_count)))
+      : null;
+  const tripRank = useMemo(() => getDriverTripRank(completedCount), [completedCount]);
   const firstName = useMemo(() => getFirstName(profile?.full_name), [profile?.full_name]);
   const greeting = useMemo(() => i18n.t(greetingKey()), [locale]);
-
-  const contactDigits = String(Config.driverRegistrationPhone || '').replace(/\D/g, '');
-
-  const openWhatsAppSubscribe = useCallback(() => {
-    const text = encodeURIComponent(i18n.t('driver_subscription_wa_prefill'));
-    Linking.openURL(`https://wa.me/${contactDigits}?text=${text}`).catch(() => {});
-  }, [contactDigits]);
 
   const loadCompletedCount = useCallback(async () => {
     if (!userId) {
@@ -150,9 +125,17 @@ export default function DriverDashboardScreen() {
     setRefreshing(false);
   }, [userId, loadProfile, loadCompletedCount]);
 
+  /** Light: soft lavender hero. Dark: only dark stops so `colors.text` (light) is not drawn on pale bands. */
+  const heroGradientColors = useMemo(
+    () =>
+      isDark
+        ? [colors.primaryLight, colors.surface, colors.background]
+        : ['#EDE9FE', '#FAF5FF', colors.background],
+    [isDark, colors.background, colors.primaryLight, colors.surface]
+  );
+
   const header = (
     <View style={[styles.headerWrapper, Platform.OS !== 'ios' && styles.headerWrapperAndroid]}>
-      {Platform.OS === 'ios' ? <BlurView intensity={80} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} /> : null}
       <View style={styles.headerInner}>
         <Text style={styles.headerTitle}>{i18n.t('driver_dashboard_title')}</Text>
       </View>
@@ -185,7 +168,7 @@ export default function DriverDashboardScreen() {
         showsVerticalScrollIndicator={false}
       >
         <LinearGradient
-          colors={['#EDE9FE', '#FAF5FF', colors.background]}
+          colors={heroGradientColors}
           start={{ x: 0, y: 0 }}
           end={{ x: 1, y: 1 }}
           style={styles.hero}
@@ -199,7 +182,11 @@ export default function DriverDashboardScreen() {
         <View style={styles.statsRow}>
           <View
             style={[styles.statCard, styles.statCardFirst, cardShadow]}
-            accessibilityLabel={`${i18n.t('driver_score_label')}: ${score != null ? score.toFixed(1) : '—'}`}
+            accessibilityLabel={
+              ratingCount != null
+                ? `${i18n.t('driver_score_label')}: ${score != null ? score.toFixed(1) : '—'}. ${i18n.t('driver_score_ratings_count', { count: ratingCount })}`
+                : `${i18n.t('driver_score_label')}: ${score != null ? score.toFixed(1) : '—'}`
+            }
           >
             <View style={styles.statIconCircle}>
               <Ionicons name="star" size={24} color={colors.primaryDark} />
@@ -207,70 +194,38 @@ export default function DriverDashboardScreen() {
             <Text style={styles.statValue}>{score != null ? score.toFixed(1) : '—'}</Text>
             <Text style={styles.statLabel}>{i18n.t('driver_score_label')}</Text>
             <Text style={styles.statHint}>{i18n.t('driver_score_out_of')}</Text>
+            {ratingCount != null ? (
+              <Text style={styles.statRatingCount} numberOfLines={2}>
+                {ratingCount === 0
+                  ? i18n.t('driver_score_no_ratings_yet')
+                  : ratingCount === 1
+                    ? i18n.t('driver_score_rating_singular')
+                    : i18n.t('driver_score_ratings_count', { count: ratingCount })}
+              </Text>
+            ) : null}
           </View>
           <View
             style={[styles.statCard, cardShadow]}
-            accessibilityLabel={`${i18n.t('driver_trips_completed')}: ${completedCount}`}
+            accessibilityLabel={`${i18n.t('driver_trips_completed')}: ${completedCount}. ${i18n.t(
+              `driver_rank_${tripRank.key}`
+            )}`}
           >
-            <View style={styles.statIconCircle}>
-              <Ionicons name="ribbon-outline" size={24} color={colors.primaryDark} />
+            <View
+              style={[
+                styles.statIconCircle,
+                { backgroundColor: tripRank.softBg, borderWidth: StyleSheet.hairlineWidth, borderColor: tripRank.accent },
+              ]}
+            >
+              <Ionicons name={tripRank.icon} size={24} color={tripRank.iconColor} />
             </View>
             <Text style={styles.statValue}>{completedCount}</Text>
             <Text style={styles.statLabel}>{i18n.t('driver_trips_completed')}</Text>
+            <Text style={[styles.statRankName, { color: tripRank.accent }]}>{i18n.t(`driver_rank_${tripRank.key}`)}</Text>
             <Text style={styles.statHint}>{i18n.t('driver_trips_completed_hint')}</Text>
           </View>
         </View>
 
-        <View
-          style={[
-            styles.subCard,
-            cardShadow,
-            subActive ? styles.subCardOk : styles.subCardWarn,
-          ]}
-        >
-          <View style={styles.subHeaderRow}>
-            <View style={[styles.subBadge, subActive ? styles.subBadgeOk : styles.subBadgeWarn]}>
-              <Ionicons
-                name={subActive ? 'checkmark-circle' : 'alert-circle'}
-                size={18}
-                color={subActive ? ACCENT_DONE : colors.error}
-              />
-              <Text style={[styles.subBadgeText, subActive ? styles.subBadgeTextOk : styles.subBadgeTextWarn]}>
-                {subActive ? i18n.t('driver_subscription_active_title') : i18n.t('driver_subscription_expired_title')}
-              </Text>
-            </View>
-            <Text style={styles.subCardTitle}>{i18n.t('driver_subscription_title')}</Text>
-          </View>
-          <Text style={styles.subPrice}>{i18n.t('driver_subscription_price')}</Text>
-          <Text style={styles.subStatus}>
-            {subActive ? i18n.t('driver_subscription_active') : i18n.t('driver_subscription_expired')}
-          </Text>
-          {subActive && profile?.driver_subscription_valid_until ? (
-            <View style={styles.subUntilRow}>
-              <Ionicons name="calendar-outline" size={16} color={colors.primaryDark} style={styles.subUntilIcon} />
-              <Text style={styles.subUntil}>
-                {i18n.t('driver_subscription_expires')}: {formatSubUntil(profile.driver_subscription_valid_until, locale)}
-              </Text>
-            </View>
-          ) : null}
-          {!subActive ? (
-            <TouchableOpacity
-              style={styles.subCta}
-              onPress={openWhatsAppSubscribe}
-              activeOpacity={0.85}
-              accessibilityRole="button"
-              accessibilityLabel={i18n.t('driver_subscription_cta')}
-            >
-              <Ionicons name="logo-whatsapp" size={22} color={colors.white} style={styles.subCtaIcon} />
-              <Text style={styles.subCtaText}>{i18n.t('driver_subscription_cta')}</Text>
-              <Ionicons
-                name={I18nManager.isRTL ? 'chevron-back' : 'chevron-forward'}
-                size={18}
-                color="rgba(255,255,255,0.9)"
-              />
-            </TouchableOpacity>
-          ) : null}
-        </View>
+        <DriverActiveOrdersBlock onAssignmentsChanged={loadCompletedCount} />
 
         <Text style={styles.footerHint}>{i18n.t('driver_pull_refresh_hint')}</Text>
       </ScrollView>
@@ -282,11 +237,10 @@ function createDriverDashboardStyles(colors) {
   return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
   headerWrapper: {
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    backgroundColor: 'transparent',
     overflow: 'hidden',
   },
-  headerWrapperAndroid: { backgroundColor: colors.surface },
+  headerWrapperAndroid: { backgroundColor: 'transparent' },
   headerInner: {
     paddingHorizontal: ios.spacing.lg,
     paddingVertical: ios.spacing.md,
@@ -331,7 +285,12 @@ function createDriverDashboardStyles(colors) {
     lineHeight: 22,
     fontWeight: '500',
   },
-  statsRow: { flexDirection: 'row', paddingHorizontal: ios.spacing.lg, marginTop: 8 },
+  statsRow: {
+    flexDirection: 'row',
+    paddingHorizontal: ios.spacing.lg,
+    marginTop: 8,
+    marginBottom: ios.spacing.sm,
+  },
   statCardFirst: { marginRight: 12 },
   statCard: {
     flex: 1,
@@ -341,7 +300,7 @@ function createDriverDashboardStyles(colors) {
     alignItems: 'center',
     borderWidth: 1,
     borderColor: colors.border,
-    minHeight: 148,
+    minHeight: 168,
     justifyContent: 'center',
   },
   statIconCircle: {
@@ -373,61 +332,22 @@ function createDriverDashboardStyles(colors) {
     marginTop: 4,
     textAlign: 'center',
   },
-  subCard: {
-    marginHorizontal: ios.spacing.lg,
-    marginTop: 16,
-    borderRadius: ios.radius.xl,
-    padding: ios.spacing.lg,
-    borderWidth: 1,
-  },
-  subCardOk: {
-    backgroundColor: colors.surface,
-    borderColor: 'rgba(34, 197, 94, 0.35)',
-  },
-  subCardWarn: {
-    backgroundColor: '#FFFBEB',
-    borderColor: 'rgba(245, 158, 11, 0.45)',
-  },
-  subHeaderRow: { marginBottom: 4 },
-  subBadge: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 20,
-    marginBottom: 8,
-  },
-  subBadgeOk: { backgroundColor: 'rgba(34, 197, 94, 0.12)' },
-  subBadgeWarn: { backgroundColor: 'rgba(220, 38, 38, 0.1)' },
-  subBadgeText: { marginStart: 6, fontSize: 13, fontWeight: '800' },
-  subBadgeTextOk: { color: '#15803D' },
-  subBadgeTextWarn: { color: colors.error },
-  subCardTitle: { fontSize: ios.fontSize.callout, fontWeight: '800', color: colors.text },
-  subPrice: {
-    fontSize: ios.fontSize.footnote,
-    fontWeight: '700',
-    color: colors.primaryDark,
+  statRatingCount: {
     marginTop: 6,
-    lineHeight: 20,
+    fontSize: 11,
+    fontWeight: '600',
+    color: colors.placeholder,
+    textAlign: 'center',
+    lineHeight: 15,
+    paddingHorizontal: 2,
   },
-  subStatus: { fontSize: ios.fontSize.subhead, color: colors.text, marginTop: 10, lineHeight: 22, fontWeight: '500' },
-  subUntilRow: { flexDirection: 'row', alignItems: 'center', marginTop: 12 },
-  subUntilIcon: { marginRight: 8 },
-  subUntil: { fontSize: ios.fontSize.footnote, color: colors.textSecondary, flex: 1, fontWeight: '600' },
-  subCta: {
-    marginTop: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#25D366',
-    paddingVertical: 14,
-    paddingHorizontal: 16,
-    borderRadius: ios.radius.lg,
-    minHeight: ios.minTouchTarget,
+  statRankName: {
+    marginTop: 6,
+    fontSize: 11,
+    fontWeight: '800',
+    textAlign: 'center',
+    letterSpacing: 0.5,
   },
-  subCtaIcon: { marginEnd: 10 },
-  subCtaText: { color: colors.white, fontWeight: '800', fontSize: ios.fontSize.callout, flex: 1, textAlign: 'center' },
   footerHint: {
     textAlign: 'center',
     fontSize: 12,

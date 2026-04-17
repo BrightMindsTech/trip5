@@ -13,7 +13,6 @@ import {
   KeyboardAvoidingView,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import i18n, { initI18n } from '../i18n';
 import { ios } from '../theme';
@@ -38,7 +37,7 @@ function kindIcon(kind) {
 }
 
 export default function SavedPlacesScreen({ navigation }) {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const styles = useMemo(() => createSavedPlacesStyles(colors), [colors]);
   const { loading, error, rows, refresh, insertPlace, updatePlace, deletePlace } = useSavedPlaces();
   const [localeState, setLocaleState] = useState(i18n.locale);
@@ -212,7 +211,6 @@ export default function SavedPlacesScreen({ navigation }) {
 
   const header = (
     <View style={[styles.headerWrapper, Platform.OS !== 'ios' && styles.headerWrapperAndroid]}>
-      {Platform.OS === 'ios' ? <BlurView intensity={80} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} /> : null}
       <View style={styles.header}>
         <TouchableOpacity
           onPress={() => navigation.goBack()}
@@ -348,14 +346,13 @@ export default function SavedPlacesScreen({ navigation }) {
 function createSavedPlacesStyles(colors) {
   return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  safeInner: { flex: 1 },
+  safeInner: { flex: 1, backgroundColor: 'transparent' },
   headerWrapper: {
     position: 'relative',
-    overflow: 'hidden',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    backgroundColor: 'transparent',
+    elevation: 0,
   },
-  headerWrapperAndroid: { backgroundColor: colors.surface },
+  headerWrapperAndroid: { backgroundColor: 'transparent', elevation: 0 },
   header: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -363,6 +360,7 @@ function createSavedPlacesStyles(colors) {
     paddingHorizontal: ios.spacing.md,
     paddingVertical: ios.spacing.sm,
     minHeight: 48,
+    backgroundColor: 'transparent',
   },
   headerBack: { flexDirection: 'row', alignItems: 'center', width: 88 },
   backChevron: { fontSize: 28, color: colors.primary, fontWeight: '300', marginRight: 2 },

@@ -308,6 +308,7 @@ const en = {
   rider_driver_vehicle_pending: 'Your driver has not added vehicle details yet.',
   driver_score_ratings_count: '%{count} ratings',
   driver_score_rating_singular: '1 rating',
+  driver_score_no_ratings_yet: 'No ratings yet',
   rider_cancel_trip: 'Cancel ride',
   rider_cancel_trip_confirm_title: 'Cancel this ride?',
   rider_cancel_trip_confirm_body: 'Your current trip request will be cancelled.',
@@ -344,12 +345,19 @@ const en = {
   driver_tab_jobs: 'Jobs',
   driver_tab_dashboard: 'Dashboard',
   driver_dashboard_title: 'Dashboard',
+  driver_dashboard_active_rides: 'Active rides',
+  driver_dashboard_active_rides_sub: 'Your current assignments — same list as the Jobs tab.',
   driver_dashboard_welcome_sub: 'Here’s your Trip5 overview.',
   driver_greeting_morning: 'Good morning',
   driver_greeting_afternoon: 'Good afternoon',
   driver_greeting_evening: 'Good evening',
   driver_score_label: 'Trip5 score',
   driver_score_out_of: 'out of 5',
+  driver_rank_bronze: 'Bronze',
+  driver_rank_silver: 'Silver',
+  driver_rank_gold: 'Gold',
+  driver_rank_diamond: 'Diamond',
+  driver_rank_platinum: 'Platinum',
   driver_trips_completed: 'Completed trips',
   driver_trips_completed_hint: 'Total finished rides',
   driver_past_rides: 'Past rides',
@@ -675,6 +683,7 @@ const ar = {
   rider_driver_vehicle_pending: 'لم يُضِف السائق تفاصيل المركبة بعد.',
   driver_score_ratings_count: '%{count} تقييم',
   driver_score_rating_singular: 'تقييم واحد',
+  driver_score_no_ratings_yet: 'لا تقييمات بعد',
   rider_cancel_trip: 'إلغاء الرحلة',
   rider_cancel_trip_confirm_title: 'إلغاء هذه الرحلة؟',
   rider_cancel_trip_confirm_body: 'سيتم إلغاء طلب الرحلة الحالي.',
@@ -711,12 +720,19 @@ const ar = {
   driver_tab_jobs: 'الرحلات',
   driver_tab_dashboard: 'لوحة التحكم',
   driver_dashboard_title: 'لوحة التحكم',
+  driver_dashboard_active_rides: 'رحلات نشطة',
+  driver_dashboard_active_rides_sub: 'مهامك الحالية — نفس القائمة في تبويب الرحلات.',
   driver_dashboard_welcome_sub: 'نظرة سريعة على حسابك في Trip5.',
   driver_greeting_morning: 'صباح الخير',
   driver_greeting_afternoon: 'مساء الخير',
   driver_greeting_evening: 'مساء الخير',
   driver_score_label: 'تقييم Trip5',
   driver_score_out_of: 'من 5',
+  driver_rank_bronze: 'برونز',
+  driver_rank_silver: 'فضي',
+  driver_rank_gold: 'ذهبي',
+  driver_rank_diamond: 'ألماسي',
+  driver_rank_platinum: 'بلاتيني',
   driver_trips_completed: 'رحلات مكتملة',
   driver_trips_completed_hint: 'إجمالي الرحلات المنتهية',
   driver_past_rides: 'رحلات سابقة',
@@ -749,7 +765,9 @@ function applyParams(str, params) {
   if (!params || typeof str !== 'string') return str;
   let out = str;
   for (const [k, v] of Object.entries(params)) {
-    out = out.split(`{{${k}}}`).join(String(v));
+    const s = String(v);
+    out = out.split(`{{${k}}}`).join(s);
+    out = out.split(`%{${k}}`).join(s);
   }
   return out;
 }

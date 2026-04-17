@@ -490,10 +490,10 @@ function createTripTrackingStyles(colors, isDark) {
     top: 0,
     left: 0,
     right: 0,
-    backgroundColor: isDark ? 'rgba(15,10,26,0.94)' : 'rgba(255,255,255,0.92)',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    backgroundColor: 'transparent',
+    borderBottomWidth: 0,
     paddingBottom: ios.spacing.sm,
+    elevation: 0,
   },
   headerRow: {
     flexDirection: 'row',

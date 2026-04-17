@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { View, StyleSheet, Platform } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BlurView } from 'expo-blur';
 import { useFocusEffect, useRoute } from '@react-navigation/native';
 import i18n, { initI18n } from '../i18n';
 import { ios } from '../theme';
@@ -37,7 +36,7 @@ export default function BookingFlowScreen({ navigation }) {
   } = useOrder();
 
   const { colors, isDark } = useTheme();
-  const styles = useMemo(() => createBookingFlowStyles(colors, isDark), [colors, isDark]);
+  const styles = useMemo(() => createBookingFlowStyles(colors), [colors]);
 
   const [locale, setLocale] = useState(i18n.locale);
   const [initialOpenAirportModal, setInitialOpenAirportModal] = useState(false);
@@ -151,7 +150,6 @@ export default function BookingFlowScreen({ navigation }) {
   /** Floating strip: step progress only (same for map + schedule + summary). */
   const chromeStepProgressOnly = !orderSent ? (
     <View style={[styles.mapStepProgressStrip, Platform.OS !== 'ios' && styles.mapStepProgressStripAndroid]}>
-      {Platform.OS === 'ios' ? <BlurView intensity={88} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} /> : null}
       <View style={styles.mapStepProgressInner}>{stepProgressEl}</View>
     </View>
   ) : null;
@@ -208,67 +206,40 @@ export default function BookingFlowScreen({ navigation }) {
         {mapStep ? (
           <>
             <View style={styles.contentMapFill}>{flow}</View>
-            {Platform.OS === 'ios' ? (
-              <BlurView
-                pointerEvents="none"
-                intensity={90}
-                tint={isDark ? 'dark' : 'light'}
-                style={[styles.statusBarBlurBand, { height: Math.max(insets.top, 20) }]}
-              />
-            ) : (
-              <View
-                pointerEvents="none"
-                style={[
-                  styles.statusBarBlurBand,
-                  styles.statusBarBlurBandAndroid,
-                  { height: Math.max(insets.top, 24) },
-                ]}
-              />
-            )}
+            <View
+              pointerEvents="none"
+              style={[
+                styles.statusBarBlurBand,
+                Platform.OS === 'android' && styles.statusBarBlurBandAndroid,
+                { height: Math.max(insets.top, Platform.OS === 'ios' ? 20 : 24) },
+              ]}
+            />
             <View style={[styles.mapStepChrome, { paddingTop: insets.top }]}>{chromeStepProgressOnly}</View>
           </>
         ) : useOverlayChrome ? (
           <>
             <View style={styles.content}>{flow}</View>
-            {Platform.OS === 'ios' ? (
-              <BlurView
-                pointerEvents="none"
-                intensity={90}
-                tint={isDark ? 'dark' : 'light'}
-                style={[styles.statusBarBlurBand, { height: Math.max(insets.top, 20) }]}
-              />
-            ) : (
-              <View
-                pointerEvents="none"
-                style={[
-                  styles.statusBarBlurBand,
-                  styles.statusBarBlurBandAndroid,
-                  { height: Math.max(insets.top, 24) },
-                ]}
-              />
-            )}
+            <View
+              pointerEvents="none"
+              style={[
+                styles.statusBarBlurBand,
+                Platform.OS === 'android' && styles.statusBarBlurBandAndroid,
+                { height: Math.max(insets.top, Platform.OS === 'ios' ? 20 : 24) },
+              ]}
+            />
             <View style={[styles.mapStepChrome, { paddingTop: insets.top }]}>{chromeStepProgressOnly}</View>
           </>
         ) : orderSent ? (
           <>
             <View style={styles.content}>{flow}</View>
-            {Platform.OS === 'ios' ? (
-              <BlurView
-                pointerEvents="none"
-                intensity={90}
-                tint={isDark ? 'dark' : 'light'}
-                style={[styles.statusBarBlurBand, { height: Math.max(insets.top, 20) }]}
-              />
-            ) : (
-              <View
-                pointerEvents="none"
-                style={[
-                  styles.statusBarBlurBand,
-                  styles.statusBarBlurBandAndroid,
-                  { height: Math.max(insets.top, 24) },
-                ]}
-              />
-            )}
+            <View
+              pointerEvents="none"
+              style={[
+                styles.statusBarBlurBand,
+                Platform.OS === 'android' && styles.statusBarBlurBandAndroid,
+                { height: Math.max(insets.top, Platform.OS === 'ios' ? 20 : 24) },
+              ]}
+            />
           </>
         ) : (
           <View style={styles.content}>{flow}</View>
@@ -278,10 +249,10 @@ export default function BookingFlowScreen({ navigation }) {
   );
 }
 
-function createBookingFlowStyles(colors, isDark) {
+function createBookingFlowStyles(colors) {
   return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background, minHeight: 200, position: 'relative' },
-  safeInner: { flex: 1, position: 'relative' },
+  safeInner: { flex: 1, position: 'relative', backgroundColor: 'transparent' },
   contentMapFill: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 0,
@@ -292,13 +263,10 @@ function createBookingFlowStyles(colors, isDark) {
     left: 0,
     right: 0,
     zIndex: 9,
-    overflow: 'hidden',
+    backgroundColor: 'transparent',
   },
   statusBarBlurBandAndroid: {
-    backgroundColor: isDark ? 'rgba(15,10,26,0.92)' : 'rgba(250, 245, 255, 0.88)',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: isDark ? 'rgba(61, 42, 92, 0.9)' : 'rgba(233, 213, 255, 0.85)',
-    elevation: 2,
+    elevation: 0,
   },
   mapStepChrome: {
     position: 'absolute',
@@ -310,12 +278,12 @@ function createBookingFlowStyles(colors, isDark) {
   },
   mapStepProgressStrip: {
     position: 'relative',
-    overflow: 'hidden',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    backgroundColor: 'transparent',
+    borderBottomWidth: 0,
   },
   mapStepProgressStripAndroid: {
-    backgroundColor: isDark ? 'rgba(26,19,51,0.96)' : 'rgba(255,255,255,0.94)',
+    backgroundColor: 'transparent',
+    elevation: 0,
   },
   mapStepProgressInner: {
     position: 'relative',

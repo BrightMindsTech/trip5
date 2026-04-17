@@ -10,7 +10,6 @@ import {
   Platform,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { BlurView } from 'expo-blur';
 import { Ionicons } from '@expo/vector-icons';
 import i18n, { initI18n } from '../i18n';
 import { ios } from '../theme';
@@ -33,7 +32,7 @@ import { useTripChatUnread } from '../hooks/useTripChatUnread';
 import ActivityCurrentTripCard from '../components/ActivityCurrentTripCard';
 
 export default function ActivityScreen() {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
   const styles = useMemo(() => createActivityStyles(colors), [colors]);
   const navigation = useNavigation();
   const { session } = useAuth();
@@ -101,9 +100,6 @@ export default function ActivityScreen() {
 
   const header = (
     <View style={[styles.headerWrapper, Platform.OS !== 'ios' && styles.headerWrapperAndroid]}>
-      {Platform.OS === 'ios' ? (
-        <BlurView intensity={80} tint={isDark ? 'dark' : 'light'} style={StyleSheet.absoluteFill} />
-      ) : null}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>{i18n.t('activity_title')}</Text>
       </View>
@@ -175,15 +171,15 @@ export default function ActivityScreen() {
 function createActivityStyles(colors) {
   return StyleSheet.create({
   safe: { flex: 1, backgroundColor: colors.background },
-  safeInner: { flex: 1 },
+  safeInner: { flex: 1, backgroundColor: 'transparent' },
   headerWrapper: {
     position: 'relative',
-    overflow: 'hidden',
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
+    backgroundColor: 'transparent',
+    elevation: 0,
   },
   headerWrapperAndroid: {
-    backgroundColor: colors.surface,
+    backgroundColor: 'transparent',
+    elevation: 0,
   },
   header: {
     flexDirection: 'row',
@@ -192,6 +188,7 @@ function createActivityStyles(colors) {
     paddingHorizontal: ios.spacing.lg,
     paddingVertical: ios.spacing.md,
     minHeight: 44,
+    backgroundColor: 'transparent',
   },
   headerTitle: {
     fontSize: ios.fontSize.title3,
