@@ -108,7 +108,7 @@ serve(async (req) => {
 
     let incomingOffer: Record<string, unknown> | null = null;
     const row = offerRows?.[0];
-    if (row && subscriptionActive) {
+    if (row) {
       const { data: orderRow, error: ordErr } = await supabase.from("orders").select("*").eq("id", row.order_id).maybeSingle();
       if (!ordErr && orderRow && String(orderRow.status) === "pending" && orderRow.driver_id == null) {
         incomingOffer = {
@@ -116,6 +116,8 @@ serve(async (req) => {
           expiresAt: row.expires_at,
           createdAt: row.created_at,
           offerSeconds: OFFER_SECONDS,
+          /** Client disables Accept when false; POST still enforces subscription. */
+          canAccept: subscriptionActive,
           order: orderRow,
         };
       }

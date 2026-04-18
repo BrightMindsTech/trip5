@@ -36,3 +36,19 @@ export const Config = {
     process.env.EXPO_PUBLIC_DRIVER_CONTACT_PHONE ||
     '+962772182987',
 };
+
+/** Edge URL exists but anon key missing — Edge calls will fail. */
+export function isSupabaseUrlWithoutAnonKey() {
+  return Boolean(Config.edgeFunctionsBaseURL && !String(Config.supabaseAnonKey || '').trim());
+}
+
+/** Resolved driver-orders URL target (for on-device diagnostics). */
+export function describeDriverOrdersEndpoint() {
+  if (isSupabaseUrlWithoutAnonKey()) {
+    return { kind: 'misconfigured', label: 'Missing EXPO_PUBLIC_SUPABASE_ANON_KEY' };
+  }
+  if (Config.edgeFunctionsBaseURL && String(Config.supabaseAnonKey || '').trim()) {
+    return { kind: 'edge', label: `${Config.edgeFunctionsBaseURL}/driver-orders` };
+  }
+  return { kind: 'http', label: `${Config.apiBaseURL}/api/driver-orders` };
+}

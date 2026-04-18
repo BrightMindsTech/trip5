@@ -1,11 +1,15 @@
 # Supabase CLI — run: supabase link --project-ref <ref>
 # Deploy functions: supabase functions deploy orders && supabase functions deploy driver-orders
+#
+# verify_jwt: When Auth uses ES256 (JWT signing keys), the Edge gateway can return
+# UNAUTHORIZED_UNSUPPORTED_TOKEN_ALGORITHM with verify_jwt=true. Each function still
+# validates the Bearer token with supabase.auth.getUser(token) using the service role.
 
 [api]
 enabled = true
 
 [functions.orders]
-verify_jwt = true
+verify_jwt = false
 
 [functions.driver-orders]
-verify_jwt = true
+verify_jwt = false

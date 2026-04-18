@@ -4,7 +4,8 @@
 // deno-lint-ignore no-explicit-any
 type AdminClient = any;
 
-export const OFFER_SECONDS = 10;
+/** Time window for driver to see/respond to an offer (polling + any-tab UI). */
+export const OFFER_SECONDS = 45;
 
 export type AssignDriverReason =
   | "ok"
@@ -102,7 +103,15 @@ export async function assignNextDriver(supabase: AdminClient, orderId: string): 
   const pool = drivers || [];
   result.eligibleDriverCount = pool.length;
 
-  const nextId = pool.map((d: { id: string }) => d.id).find((id: string) => !offered.has(id));
+  /** Shuffle so the same driver is not always first (stable UUID order was unfair with multiple drivers). */
+  const ids = pool.map((d: { id: string }) => d.id);
+  for (let i = ids.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const t = ids[i]!;
+    ids[i] = ids[j]!;
+    ids[j] = t;
+  }
+  const nextId = ids.find((id: string) => !offered.has(id));
   if (!nextId) {
     result.reason = pool.length === 0 ? "no_eligible_drivers" : "all_drivers_already_offered";
     return result;

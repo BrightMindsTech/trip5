@@ -1,10 +1,13 @@
 import React, { useState, useCallback, useMemo } from 'react';
-import { Platform } from 'react-native';
+import { Platform, View } from 'react-native';
 import { NavigationContainer, DarkTheme, DefaultTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { LocaleTabContext } from '../context/LocaleTabContext';
 import { useTheme } from '../context/ThemeContext';
+import { DriverOrdersProvider } from '../context/DriverOrdersContext';
+import DriverIncomingOfferModal from '../components/DriverIncomingOfferModal';
+import DriverShellAlerts from '../components/DriverShellAlerts';
 import DriverDashboardScreen from '../screens/DriverDashboardScreen';
 import DriverHomeScreen from '../screens/DriverHomeScreen';
 import AccountScreen from '../screens/AccountScreen';
@@ -19,6 +22,7 @@ function DriverTabs() {
 
   const screenOptions = useMemo(
     () => ({
+      lazy: false,
       headerShown: false,
       tabBarActiveTintColor: colors.primary,
       tabBarInactiveTintColor: colors.placeholder,
@@ -36,7 +40,11 @@ function DriverTabs() {
 
   return (
     <LocaleTabContext.Provider value={bump}>
-      <Tab.Navigator screenOptions={screenOptions}>
+      <DriverOrdersProvider>
+        <View style={{ flex: 1 }}>
+          <DriverShellAlerts />
+          <DriverIncomingOfferModal />
+          <Tab.Navigator style={{ flex: 1 }} screenOptions={screenOptions}>
         <Tab.Screen
           name="DriverDashboard"
           component={DriverDashboardScreen}
@@ -61,7 +69,9 @@ function DriverTabs() {
             tabBarIcon: ({ color, size }) => <Ionicons name="person-outline" size={size} color={color} />,
           }}
         />
-      </Tab.Navigator>
+          </Tab.Navigator>
+        </View>
+      </DriverOrdersProvider>
     </LocaleTabContext.Provider>
   );
 }

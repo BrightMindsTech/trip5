@@ -27,7 +27,6 @@ import AppLoadingScreen from '../components/AppLoadingScreen';
 import TripChatPanel from '../components/TripChatPanel';
 import ChatUnreadDot from '../components/ChatUnreadDot';
 import RiderDriverVehicleSection from '../components/RiderDriverVehicleSection';
-import SharedRidePoolLine from '../components/SharedRidePoolLine';
 
 function hasLatLng(obj) {
   return (
@@ -406,7 +405,6 @@ export default function TripTrackingScreen() {
             },
           ]}
         >
-          <SharedRidePoolLine order={order} variant="rider" />
           {order.driver_id ? <RiderDriverVehicleSection driverId={order.driver_id} compact /> : null}
           {showChatHint ? (
             <View style={styles.chatHintBanner}>

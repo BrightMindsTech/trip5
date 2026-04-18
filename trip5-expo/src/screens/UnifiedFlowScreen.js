@@ -461,11 +461,28 @@ export default function UnifiedFlowScreen({
   };
   const routeText = getRouteText();
 
+  const dispatchFailureHint = () => {
+    if (!orderDispatch || orderDispatch.offerCreated) return '';
+    const r = orderDispatch.reason;
+    const keyByReason = {
+      no_eligible_drivers: 'order_dispatch_reason_no_eligible',
+      all_drivers_already_offered: 'order_dispatch_reason_all_offered',
+      offer_insert_failed: 'order_dispatch_reason_offer_failed',
+      assign_exception: 'order_dispatch_reason_error',
+      drivers_query_failed: 'order_dispatch_reason_error',
+      past_offers_query_failed: 'order_dispatch_reason_error',
+      order_not_found: 'order_dispatch_reason_error',
+      order_not_dispatchable: 'order_dispatch_reason_error',
+    };
+    const key = keyByReason[r] || 'order_dispatch_no_offer';
+    return i18n.t(key);
+  };
+
   if (orderSent) {
     const dispatchHint = orderDispatch
       ? orderDispatch.offerCreated
         ? i18n.t('order_dispatch_ok_sub')
-        : i18n.t('order_dispatch_no_offer')
+        : dispatchFailureHint()
       : i18n.t('order_sent_desc');
     return (
       <View style={[styles.container, styles.containerSuccess, contentTopInset != null && { paddingTop: contentTopInset }]}>

@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import {
   View,
   Text,
@@ -9,11 +9,6 @@ import {
   ActivityIndicator,
   Platform,
   Alert,
-  Modal,
-  Animated,
-  Easing,
-  useWindowDimensions,
-  Pressable,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
@@ -22,16 +17,14 @@ import { ios } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
 import { supabase } from '../lib/supabase';
-import { getDriverOrders, postDriverOrderAction } from '../api';
+import { postDriverOrderAction } from '../api';
 import { getRouteLabel, statusLabel, pickupSummary, destinationSummary, formatBookingDate } from '../utils/bookings';
-import { isDriverSubscriptionActive } from '../utils/driverSubscription';
+import { getTripReference, formatTripRefLine } from '../utils/tripReference';
+import { useDriverJobs } from '../context/DriverOrdersContext';
 import { useFocusEffect } from '@react-navigation/native';
 
 const ACCENT_DONE = '#22C55E';
 const ACCENT_CANCEL = '#94A3B8';
-
-/** 1s polling overlapped requests; a slow 401 could finish after a fresh 200 and flash "Please sign in again." */
-const DRIVER_JOBS_POLL_MS = 5000;
 
 function nextActionForStatus(status) {
   const s = String(status || '').toLowerCase();
@@ -44,75 +37,14 @@ function nextActionForStatus(status) {
 export default function DriverHomeScreen() {
   const { colors } = useTheme();
   const styles = useMemo(() => createDriverHomeStyles(colors), [colors]);
-  const { accessToken, profile, session, loading: authLoading } = useAuth();
+  const { accessToken, session } = useAuth();
   const userId = session?.user?.id;
-  const { width: windowWidth } = useWindowDimensions();
-  const barMaxWidth = Math.min(windowWidth - 48, 400);
+  const { mine, jobsBootloading, refresh } = useDriverJobs();
   const [locale, setLocale] = useState(i18n.locale);
-  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState(null);
-  const [incomingOffer, setIncomingOffer] = useState(null);
-  const [mine, setMine] = useState([]);
   const [actingId, setActingId] = useState(null);
-  const [offerVisible, setOfferVisible] = useState(false);
-  const [subscriptionOk, setSubscriptionOk] = useState(true);
   const [pastRides, setPastRides] = useState([]);
   const [pastErr, setPastErr] = useState(null);
-  const progressAnim = useRef(new Animated.Value(1)).current;
-  const animOfferId = useRef(null);
-  const loadGen = useRef(0);
-
-  const load = useCallback(async () => {
-    const myGen = ++loadGen.current;
-    let token = accessToken;
-    try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      token = sessionData?.session?.access_token ?? accessToken ?? null;
-    } catch {
-      token = accessToken ?? null;
-    }
-
-    if (!token) {
-      if (myGen !== loadGen.current) return;
-      if (authLoading) {
-        setError(null);
-        return;
-      }
-      setError('Please sign in again.');
-      setIncomingOffer(null);
-      setMine([]);
-      setOfferVisible(false);
-      setSubscriptionOk(isDriverSubscriptionActive(profile?.driver_subscription_valid_until));
-      return;
-    }
-
-    try {
-      const data = await getDriverOrders(token);
-      if (myGen !== loadGen.current) return;
-      setError(null);
-      if (typeof data.subscriptionActive === 'boolean') {
-        setSubscriptionOk(data.subscriptionActive);
-      } else {
-        setSubscriptionOk(isDriverSubscriptionActive(profile?.driver_subscription_valid_until));
-      }
-      const inc = data.incomingOffer || null;
-      setIncomingOffer(inc);
-      setMine(data.mine || []);
-      if (inc) {
-        setOfferVisible(true);
-      } else {
-        setOfferVisible(false);
-      }
-    } catch (e) {
-      if (myGen !== loadGen.current) return;
-      setError(e?.message || i18n.t('driver_error'));
-      setIncomingOffer(null);
-      setMine([]);
-      setOfferVisible(false);
-      setSubscriptionOk(isDriverSubscriptionActive(profile?.driver_subscription_valid_until));
-    }
-  }, [accessToken, authLoading, profile?.driver_subscription_valid_until]);
 
   const loadPastRides = useCallback(async () => {
     if (!userId) {
@@ -122,7 +54,7 @@ export default function DriverHomeScreen() {
     setPastErr(null);
     const { data, error } = await supabase
       .from('orders')
-      .select('id, route, scheduled_at, status, created_at, pickup, destination, passenger_name')
+      .select('id, route, scheduled_at, status, created_at, pickup, destination, passenger_name, trip_reference')
       .eq('driver_id', userId)
       .in('status', ['completed', 'cancelled'])
       .order('created_at', { ascending: false })
@@ -155,71 +87,18 @@ export default function DriverHomeScreen() {
     };
   }, []);
 
-  useEffect(() => {
-    setLoading(true);
-    load().finally(() => setLoading(false));
-    const poll = setInterval(() => {
-      load();
-    }, DRIVER_JOBS_POLL_MS);
-    return () => clearInterval(poll);
-  }, [load]);
-
-  useEffect(() => {
-    if (!incomingOffer?.offerId) {
-      animOfferId.current = null;
-      return;
-    }
-    if (animOfferId.current === incomingOffer.offerId) return;
-    animOfferId.current = incomingOffer.offerId;
-
-    const end = new Date(incomingOffer.expiresAt).getTime();
-    const start = new Date(incomingOffer.createdAt).getTime();
-    const total = Math.max(1, end - start);
-    const remaining = Math.max(0, end - Date.now());
-    const startFrac = total > 0 ? remaining / total : 0;
-
-    progressAnim.stopAnimation();
-    progressAnim.setValue(startFrac);
-    Animated.timing(progressAnim, {
-      toValue: 0,
-      duration: remaining,
-      easing: Easing.linear,
-      useNativeDriver: false,
-    }).start();
-  }, [incomingOffer?.offerId, incomingOffer?.expiresAt, incomingOffer?.createdAt, progressAnim]);
-
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await load();
+    await refresh();
     await loadPastRides();
     setRefreshing(false);
-  }, [load, loadPastRides]);
-
-  const respondOffer = async (accept) => {
-    if (!incomingOffer) return;
-    setActingId(incomingOffer.offerId);
-    try {
-      await postDriverOrderAction(accessToken, {
-        action: 'respond_offer',
-        offerId: incomingOffer.offerId,
-        accept,
-      });
-      setOfferVisible(false);
-      setIncomingOffer(null);
-      await load();
-    } catch (e) {
-      Alert.alert('', e?.message || 'Failed');
-      await load();
-    } finally {
-      setActingId(null);
-    }
-  };
+  }, [refresh, loadPastRides]);
 
   const onSetStatus = async (orderId, status) => {
     setActingId(orderId);
     try {
       await postDriverOrderAction(accessToken, { orderId, action: 'set_status', status });
-      await load();
+      await refresh();
     } catch (e) {
       Alert.alert('', e?.message || 'Failed');
     } finally {
@@ -286,19 +165,9 @@ export default function DriverHomeScreen() {
   const renderSectionHeader = ({ section: { title, data } }) => (
     <View style={styles.sectionHeader}>
       <Text style={styles.sectionTitle}>{title}</Text>
-      {data.length === 0 && !loading ? <Text style={styles.emptyHint}>{i18n.t('driver_no_mine')}</Text> : null}
+      {data.length === 0 && !jobsBootloading ? <Text style={styles.emptyHint}>{i18n.t('driver_no_mine')}</Text> : null}
     </View>
   );
-
-  const offerOrder = incomingOffer?.order;
-  const offerRoute = offerOrder ? getRouteLabel(offerOrder.route) : '';
-  const offerPickup = offerOrder ? pickupSummary(offerOrder.pickup) : '';
-  const offerDest = offerOrder ? destinationSummary(offerOrder.destination) : '';
-
-  const barWidthAnimated = progressAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, barMaxWidth],
-  });
 
   const pastRidesFooter = useMemo(
     () => (
@@ -358,6 +227,11 @@ export default function DriverHomeScreen() {
                   <Ionicons name="time-outline" size={16} color={colors.textSecondary} />
                   <Text style={styles.pastRideWhen}>{when}</Text>
                 </View>
+                {getTripReference(item) ? (
+                  <Text style={styles.pastRideRef} numberOfLines={1} selectable>
+                    {formatTripRefLine(i18n, getTripReference(item))}
+                  </Text>
+                ) : null}
                 {pickup ? (
                   <View style={styles.pastAddrRow}>
                     <View style={styles.pastAddrDot} />
@@ -381,7 +255,7 @@ export default function DriverHomeScreen() {
         <Text style={styles.pastPullHint}>{i18n.t('driver_pull_refresh_hint')}</Text>
       </View>
     ),
-    [pastErr, pastRides, locale, colors.error, colors.placeholder, colors.textSecondary, styles, loadPastRides]
+    [pastErr, pastRides, locale, colors.error, colors.placeholder, colors.textSecondary, colors.primaryDark, styles, loadPastRides]
   );
 
   const header = (
@@ -393,7 +267,7 @@ export default function DriverHomeScreen() {
     </View>
   );
 
-  if (loading && !refreshing) {
+  if (jobsBootloading && !refreshing) {
     return (
       <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
         {header}
@@ -408,20 +282,6 @@ export default function DriverHomeScreen() {
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
       {header}
-      {error ? (
-        <View style={styles.bannerErr}>
-          <Text style={styles.bannerErrText}>{error}</Text>
-          <TouchableOpacity onPress={() => load()} hitSlop={12}>
-            <Text style={styles.bannerRetry}>{i18n.t('driver_retry')}</Text>
-          </TouchableOpacity>
-        </View>
-      ) : null}
-      {!subscriptionOk ? (
-        <View style={styles.subBanner}>
-          <Ionicons name="information-circle" size={18} color={colors.primaryDark} style={{ marginRight: 8 }} />
-          <Text style={styles.subBannerText}>{i18n.t('driver_jobs_sub_banner')}</Text>
-        </View>
-      ) : null}
 
       <SectionList
         key={locale}
@@ -434,52 +294,6 @@ export default function DriverHomeScreen() {
         stickySectionHeadersEnabled={false}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={colors.primary} />}
       />
-
-      <Modal visible={offerVisible && !!incomingOffer} transparent animationType="fade" onRequestClose={() => {}}>
-        <Pressable style={styles.modalBackdrop}>
-          <Pressable style={styles.modalCard} onPress={(e) => e.stopPropagation()}>
-            <View style={styles.modalHandle} />
-            <Text style={styles.modalTitle}>{i18n.t('driver_offer_title')}</Text>
-            <Text style={styles.modalRoute}>{offerRoute}</Text>
-            {offerPickup ? (
-              <Text style={styles.modalLine} numberOfLines={3}>
-                <Text style={styles.modalLineLabel}>{i18n.t('pickup_location')}: </Text>
-                {offerPickup}
-              </Text>
-            ) : null}
-            {offerDest ? (
-              <Text style={styles.modalLine} numberOfLines={3}>
-                <Text style={styles.modalLineLabel}>{i18n.t('destination')}: </Text>
-                {offerDest}
-              </Text>
-            ) : null}
-            <Text style={styles.timerHint}>{i18n.t('driver_offer_timer_hint')}</Text>
-            <View style={[styles.timerTrack, { width: barMaxWidth }]}>
-              <Animated.View style={[styles.timerBar, { width: barWidthAnimated }]} />
-            </View>
-            <View style={styles.modalActions}>
-              <TouchableOpacity
-                style={[styles.declineBtn, actingId && styles.btnDisabled]}
-                onPress={() => respondOffer(false)}
-                disabled={!!actingId}
-              >
-                <Text style={styles.declineBtnText}>{i18n.t('driver_offer_decline')}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.acceptBtn, actingId && styles.btnDisabled]}
-                onPress={() => respondOffer(true)}
-                disabled={!!actingId}
-              >
-                {actingId ? (
-                  <ActivityIndicator color={colors.white} />
-                ) : (
-                  <Text style={styles.acceptBtnText}>{i18n.t('driver_offer_accept')}</Text>
-                )}
-              </TouchableOpacity>
-            </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
     </SafeAreaView>
   );
 }
@@ -505,26 +319,6 @@ function createDriverHomeStyles(colors) {
   },
   centered: { flex: 1, justifyContent: 'center', alignItems: 'center' },
   loadingText: { marginTop: 12, color: colors.textSecondary },
-  bannerErr: {
-    paddingHorizontal: ios.spacing.lg,
-    paddingVertical: 10,
-    backgroundColor: colors.primaryLight,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  bannerErrText: { flex: 1, color: colors.text, fontSize: 13 },
-  bannerRetry: { color: colors.primary, fontWeight: '700', fontSize: 14 },
-  subBanner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: ios.spacing.lg,
-    paddingVertical: 10,
-    backgroundColor: colors.primaryLight,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: colors.border,
-  },
-  subBannerText: { flex: 1, color: colors.text, fontSize: 13, lineHeight: 18, fontWeight: '600' },
   listContent: { paddingHorizontal: ios.spacing.lg, paddingBottom: 40 },
   pastBlock: { paddingTop: 8 },
   pastSectionHead: {
@@ -637,6 +431,12 @@ function createDriverHomeStyles(colors) {
     color: colors.textSecondary,
     fontWeight: '600',
   },
+  pastRideRef: {
+    fontSize: ios.fontSize.caption,
+    fontWeight: ios.fontWeight.semibold,
+    color: colors.primaryDark,
+    marginTop: 6,
+  },
   pastAddrRow: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 8 },
   pastAddrDot: {
     width: 8,
@@ -701,86 +501,5 @@ function createDriverHomeStyles(colors) {
   },
   primaryBtnText: { color: colors.white, fontWeight: '700', fontSize: 15 },
   btnDisabled: { opacity: 0.6 },
-  modalBackdrop: {
-    flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.45)',
-    justifyContent: 'flex-end',
-    paddingBottom: Platform.OS === 'ios' ? 24 : 16,
-  },
-  modalCard: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: ios.radius.xxl,
-    borderTopRightRadius: ios.radius.xxl,
-    paddingHorizontal: ios.spacing.lg,
-    paddingTop: ios.spacing.sm,
-    paddingBottom: ios.spacing.xl,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-  },
-  modalHandle: {
-    alignSelf: 'center',
-    width: 40,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.border,
-    marginBottom: ios.spacing.md,
-  },
-  modalTitle: {
-    fontSize: 18,
-    fontWeight: '800',
-    color: colors.text,
-    textAlign: 'center',
-    marginBottom: 8,
-  },
-  modalRoute: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: colors.primary,
-    textAlign: 'center',
-    marginBottom: 12,
-  },
-  modalLine: { fontSize: 14, color: colors.text, marginBottom: 8, lineHeight: 20 },
-  modalLineLabel: { fontWeight: '700', color: colors.textSecondary },
-  timerHint: {
-    fontSize: 12,
-    fontWeight: '600',
-    color: colors.textSecondary,
-    textAlign: 'center',
-    marginTop: 8,
-    marginBottom: 8,
-  },
-  timerTrack: {
-    alignSelf: 'center',
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: colors.metallic,
-    overflow: 'hidden',
-    marginBottom: 20,
-  },
-  timerBar: {
-    height: '100%',
-    borderRadius: 4,
-    backgroundColor: colors.primary,
-  },
-  modalActions: { flexDirection: 'row', justifyContent: 'space-between' },
-  declineBtn: {
-    flex: 1,
-    marginRight: 6,
-    paddingVertical: 14,
-    borderRadius: ios.radius.lg,
-    borderWidth: 2,
-    borderColor: colors.border,
-    alignItems: 'center',
-  },
-  declineBtnText: { fontWeight: '700', color: colors.text },
-  acceptBtn: {
-    flex: 1,
-    marginLeft: 6,
-    paddingVertical: 14,
-    borderRadius: ios.radius.lg,
-    backgroundColor: colors.primary,
-    alignItems: 'center',
-  },
-  acceptBtnText: { fontWeight: '700', color: colors.white, fontSize: 16 },
 });
 }

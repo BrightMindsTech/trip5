@@ -95,7 +95,7 @@ export default async function handler(req, res) {
 
     let incomingOffer = null;
     const row = offerRows?.[0];
-    if (row && subActive) {
+    if (row) {
       const { data: orderRow, error: ordErr } = await supabase.from('orders').select('*').eq('id', row.order_id).maybeSingle();
       if (!ordErr && orderRow && String(orderRow.status) === 'pending' && orderRow.driver_id == null) {
         incomingOffer = {
@@ -103,6 +103,7 @@ export default async function handler(req, res) {
           expiresAt: row.expires_at,
           createdAt: row.created_at,
           offerSeconds: OFFER_SECONDS,
+          canAccept: subActive,
           order: orderRow,
         };
       }

@@ -2,7 +2,7 @@
  * Sequential 10s offers to drivers (service-role / backend only).
  */
 
-export const OFFER_SECONDS = 10;
+export const OFFER_SECONDS = 45;
 
 /**
  * @typedef {Object} AssignDriverResult
@@ -99,7 +99,14 @@ export async function assignNextDriver(supabase, orderId) {
   const pool = drivers || [];
   result.eligibleDriverCount = pool.length;
 
-  const nextId = pool.map((d) => d.id).find((id) => !offered.has(id));
+  const ids = pool.map((d) => d.id);
+  for (let i = ids.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const t = ids[i];
+    ids[i] = ids[j];
+    ids[j] = t;
+  }
+  const nextId = ids.find((id) => !offered.has(id));
   if (!nextId) {
     result.reason = pool.length === 0 ? 'no_eligible_drivers' : 'all_drivers_already_offered';
     return result;

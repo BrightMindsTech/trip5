@@ -36,7 +36,6 @@ Configure `EXPO_PUBLIC_SUPABASE_URL` + anon key so `edgeFunctionsBaseURL` points
 
 | Area | Status |
 |------|--------|
-| `SharedRidePoolLine` | UI stub; no required DB contract until shared-trip fields are wired. |
 | `trip_reference` | Optional display; backfill can be done with triggers or jobs (not in repo). |
 
 ## Reconciliation checklist (remote DB “ahead” of repo)

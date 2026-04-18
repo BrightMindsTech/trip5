@@ -80,7 +80,15 @@ const en = {
   order_sent_desc: 'The owner will contact you shortly.',
   order_dispatch_ok_sub: 'A driver is being notified now. Check the driver app for the incoming offer.',
   order_dispatch_no_offer:
-    'Your request was saved, but no driver could be notified automatically. Ensure at least one driver has is_driver enabled and an active subscription (driver_subscription_valid_until), then try again or open Activity.',
+    'Your request was saved, but no driver could be notified automatically. Ensure at least one driver account is enabled with an active subscription, then try again or check Activity.',
+  order_dispatch_reason_no_eligible:
+    'No drivers are available to notify right now. Drivers must have driver mode enabled and an active Trip5 subscription.',
+  order_dispatch_reason_all_offered:
+    'Every available driver was already offered this trip. Wait for the next cycle or contact support if it continues.',
+  order_dispatch_reason_offer_failed:
+    'Your booking was saved, but the app could not create a driver notification. Please try again or contact support.',
+  order_dispatch_reason_error:
+    'Your booking was saved, but automatic driver notification failed. Please try again or contact support.',
   new_order: 'New Order',
   step: 'Step',
   step_of: '%1 of %2',
@@ -281,7 +289,7 @@ const en = {
   saved_places_loading: 'Loading places…',
   promo_section_title: 'Promos',
   promo_exclusive_tag: 'Exclusive',
-  promo_exclusive_body: '30% off your first 3 shared rides with Trip5.',
+  promo_exclusive_body: '30% off your first 3 rides with Trip5.',
   promo_subscription_tag: 'Subscription',
   promo_subscription_body: 'Zero delivery fees with Trip5 One (coming soon).',
   dashboard_live_tracking: 'Live tracking',
@@ -340,6 +348,16 @@ const en = {
   driver_loading: 'Loading…',
   driver_error: 'Could not load. Pull to retry.',
   driver_retry: 'Retry',
+  driver_jobs_auth_hint:
+    'Go to Account → Sign out, then sign in with your phone and password. If login failed repeatedly, wait 1–2 minutes (Supabase auth rate limits), then try again.',
+  driver_jobs_rate_limit_hint:
+    'Supabase temporarily blocked extra token requests. Wait 1–2 minutes without tapping Retry, then sign out and sign in from Account.',
+  driver_jobs_feed_status: 'Driver jobs feed',
+  driver_jobs_last_ok: 'Last OK {{time}}',
+  driver_jobs_no_sync_yet: 'No successful sync yet — fix any error above.',
+  driver_jobs_queue_hint:
+    'A ride popup appears only when the server assigns you that order. If nothing shows, another driver may be next in line or there are no new bookings.',
+  driver_jobs_offer_incoming: 'Offer active',
   driver_passenger: 'Passenger',
   driver_scheduled: 'Pickup time',
   driver_tab_jobs: 'Jobs',
@@ -380,6 +398,7 @@ const en = {
   driver_offer_title: 'New ride request',
   driver_offer_timer_hint: 'Respond before time runs out',
   driver_offer_accept: 'Accept',
+  driver_offer_accept_needs_subscription: 'Renew your subscription to accept. You can still decline.',
   driver_offer_decline: 'Decline',
 };
 
@@ -455,7 +474,15 @@ const ar = {
   order_sent_desc: 'سيتواصل معك صاحب الخدمة قريباً.',
   order_dispatch_ok_sub: 'جاري إشعار سائق الآن. تحقق من تطبيق السائق لطلب الوارد.',
   order_dispatch_no_offer:
-    'تم حفظ طلبك، لكن لم يُعثر على سائق للإشعار تلقائياً. تأكد أن حساب سائق مفعّل (is_driver) واشتراكه ساري (driver_subscription_valid_until)، ثم أعد المحاولة أو راجع النشاط.',
+    'تم حفظ طلبك، لكن لم يُعثر على سائق للإشعار تلقائياً. تأكد أن هناك حساب سائق مفعّل باشتراك ساري، ثم أعد المحاولة أو راجع النشاط.',
+  order_dispatch_reason_no_eligible:
+    'لا يوجد سائقون متاحون للإشعار حالياً. يجب تفعيل وضع السائق واشتراك Trip5 ساري.',
+  order_dispatch_reason_all_offered:
+    'تم عرض الرحلة على كل السائقين المتاحين. انتظر المحاولة التالية أو تواصل مع الدعم إن استمرت المشكلة.',
+  order_dispatch_reason_offer_failed:
+    'تم حفظ حجزك لكن لم يُنشأ إشعار للسائق. أعد المحاولة أو تواصل مع الدعم.',
+  order_dispatch_reason_error:
+    'تم حفظ حجزك لكن فشل الإشعار التلقائي للسائق. أعد المحاولة أو تواصل مع الدعم.',
   new_order: 'طلب جديد',
   step: 'خطوة',
   step_of: '%1 من %2',
@@ -656,7 +683,7 @@ const ar = {
   saved_places_loading: 'جاري التحميل…',
   promo_section_title: 'عروض',
   promo_exclusive_tag: 'حصري',
-  promo_exclusive_body: 'خصم 30٪ على أول 3 رحلات مشتركة مع Trip5.',
+  promo_exclusive_body: 'خصم 30٪ على أول 3 رحلات مع Trip5.',
   promo_subscription_tag: 'اشتراك',
   promo_subscription_body: 'بدون رسوم توصيل مع Trip5 One (قريباً).',
   dashboard_live_tracking: 'تتبع مباشر',
@@ -715,6 +742,16 @@ const ar = {
   driver_loading: 'جاري التحميل…',
   driver_error: 'تعذّر التحميل. اسحب للتحديث.',
   driver_retry: 'إعادة المحاولة',
+  driver_jobs_auth_hint:
+    'افتح الحساب → تسجيل الخروج، ثم سجّل الدخول برقم الهاتف وكلمة المرور. إن فشل تسجيل الدخول عدة مرات، انتظر 1–2 دقيقة (حد معدّل طلبات المصادقة في Supabase) ثم أعد المحاولة.',
+  driver_jobs_rate_limit_hint:
+    'منعت Supabase طلبات الرمز المؤقت مؤقتاً. انتظر 1–2 دقيقة دون الضغط على إعادة المحاولة، ثم سجّل الخروج والدخول من الحساب.',
+  driver_jobs_feed_status: 'تغذية طلبات السائق',
+  driver_jobs_last_ok: 'آخر نجاح {{time}}',
+  driver_jobs_no_sync_yet: 'لا يوجد اتصال ناجح بعد — راجع التنبيه أعلاه.',
+  driver_jobs_queue_hint:
+    'تظهر نافذة الرحلة فقط عندما يخصّص لك الخادم ذلك الطلب. إن لم يظهر شيء، قد يكون دور سائق آخر أو لا طلبات جديدة.',
+  driver_jobs_offer_incoming: 'عرض وارد',
   driver_passenger: 'الراكب',
   driver_scheduled: 'وقت الانطلاق',
   driver_tab_jobs: 'الرحلات',
@@ -755,6 +792,7 @@ const ar = {
   driver_offer_title: 'طلب رحلة جديد',
   driver_offer_timer_hint: 'رجاء الرد قبل انتهاء الوقت',
   driver_offer_accept: 'قبول',
+  driver_offer_accept_needs_subscription: 'جدّد الاشتراك للقبول. يمكنك الرفض.',
   driver_offer_decline: 'رفض',
 };
 

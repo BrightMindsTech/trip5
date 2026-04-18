@@ -1,12 +1,13 @@
-import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import i18n, { initI18n } from '../i18n';
 import { ios } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import { useAuth } from '../context/AuthContext';
+import { useDriverJobs } from '../context/DriverOrdersContext';
+import { postDriverOrderAction } from '../api';
 import { supabase } from '../lib/supabase';
-import { getDriverOrders, postDriverOrderAction } from '../api';
 import {
   getRouteLabel,
   statusLabel,
@@ -80,60 +81,20 @@ function createStyles(colors) {
 }
 
 /**
- * Lists the driver’s active assignments (same `mine` payload as Jobs). Refreshes on screen focus.
- * @param {{ onAssignmentsChanged?: () => void }} props — e.g. refresh dashboard stats after a trip completes.
+ * Lists the driver’s active assignments (same `mine` as Jobs). Data comes from DriverOrdersProvider polling.
  */
 export default function DriverActiveOrdersBlock({ onAssignmentsChanged }) {
   const { colors } = useTheme();
   const styles = useMemo(() => createStyles(colors), [colors]);
   const { accessToken } = useAuth();
-  const [mine, setMine] = useState([]);
-  const [sectionLoading, setSectionLoading] = useState(true);
+  const { mine, refresh, jobsBootloading } = useDriverJobs();
   const [actingId, setActingId] = useState(null);
   const [locale, setLocale] = useState(i18n.locale);
-  const loadGen = useRef(0);
-  const firstLoad = useRef(true);
-
-  const loadMine = useCallback(async () => {
-    const myGen = ++loadGen.current;
-    const showSpinner = firstLoad.current;
-    if (showSpinner) setSectionLoading(true);
-
-    let token = accessToken;
-    try {
-      const { data: sessionData } = await supabase.auth.getSession();
-      token = sessionData?.session?.access_token ?? accessToken ?? null;
-    } catch {
-      token = accessToken ?? null;
-    }
-
-    if (!token) {
-      if (myGen !== loadGen.current) return;
-      setMine([]);
-      firstLoad.current = false;
-      setSectionLoading(false);
-      return;
-    }
-
-    try {
-      const data = await getDriverOrders(token);
-      if (myGen !== loadGen.current) return;
-      setMine(data.mine || []);
-    } catch {
-      if (myGen !== loadGen.current) return;
-      setMine([]);
-    } finally {
-      if (myGen === loadGen.current) {
-        firstLoad.current = false;
-        setSectionLoading(false);
-      }
-    }
-  }, [accessToken]);
 
   useFocusEffect(
     useCallback(() => {
-      loadMine();
-    }, [loadMine])
+      refresh();
+    }, [refresh])
   );
 
   useEffect(() => {
@@ -163,7 +124,7 @@ export default function DriverActiveOrdersBlock({ onAssignmentsChanged }) {
     setActingId(orderId);
     try {
       await postDriverOrderAction(token, { orderId, action: 'set_status', status });
-      await loadMine();
+      await refresh();
       if (status === 'completed') onAssignmentsChanged?.();
     } catch (e) {
       Alert.alert('', e?.message || 'Failed');
@@ -178,7 +139,7 @@ export default function DriverActiveOrdersBlock({ onAssignmentsChanged }) {
         <Text style={styles.sectionTitle}>{i18n.t('driver_dashboard_active_rides')}</Text>
         <Text style={styles.sectionSub}>{i18n.t('driver_dashboard_active_rides_sub')}</Text>
       </View>
-      {sectionLoading ? (
+      {jobsBootloading ? (
         <View style={styles.center}>
           <ActivityIndicator color={colors.primary} />
         </View>
