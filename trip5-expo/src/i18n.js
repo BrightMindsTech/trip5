@@ -354,6 +354,9 @@ const en = {
     'Supabase temporarily blocked extra token requests. Wait 1–2 minutes without tapping Retry, then sign out and sign in from Account.',
   driver_jobs_feed_status: 'Driver jobs feed',
   driver_jobs_last_ok: 'Last OK {{time}}',
+  driver_jobs_last_ok_stale: 'Feed failed — last OK was {{time}}',
+  driver_jobs_gateway_hint:
+    'Supabase Edge Function returned a gateway error (502/503/504). The app may retry the HTTP API mirror if EXPO_PUBLIC_API_BASE_URL is set. Redeploy: supabase functions deploy driver-orders — check Edge Logs for the real error.',
   driver_jobs_no_sync_yet: 'No successful sync yet — fix any error above.',
   driver_jobs_queue_hint:
     'A ride popup appears only when the server assigns you that order. If nothing shows, another driver may be next in line or there are no new bookings.',
@@ -748,6 +751,9 @@ const ar = {
     'منعت Supabase طلبات الرمز المؤقت مؤقتاً. انتظر 1–2 دقيقة دون الضغط على إعادة المحاولة، ثم سجّل الخروج والدخول من الحساب.',
   driver_jobs_feed_status: 'تغذية طلبات السائق',
   driver_jobs_last_ok: 'آخر نجاح {{time}}',
+  driver_jobs_last_ok_stale: 'فشل التحديث — آخر نجاح كان {{time}}',
+  driver_jobs_gateway_hint:
+    'أعادت دالة Supabase خطأ بوابة (502/503/504). قد يعيد التطبيق المحاولة عبر خادم HTTP إذا وُجد EXPO_PUBLIC_API_BASE_URL. أعد النشر: supabase functions deploy driver-orders وراجع سجلات الدالة.',
   driver_jobs_no_sync_yet: 'لا يوجد اتصال ناجح بعد — راجع التنبيه أعلاه.',
   driver_jobs_queue_hint:
     'تظهر نافذة الرحلة فقط عندما يخصّص لك الخادم ذلك الطلب. إن لم يظهر شيء، قد يكون دور سائق آخر أو لا طلبات جديدة.',

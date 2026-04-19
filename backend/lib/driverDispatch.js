@@ -21,7 +21,8 @@ export async function processExpiredOffers(supabase) {
     .from('order_driver_offers')
     .select('id, order_id')
     .is('response', null)
-    .lt('expires_at', now);
+    .lt('expires_at', now)
+    .limit(100);
 
   if (error) {
     console.error('processExpiredOffers select:', error);

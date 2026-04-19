@@ -7,6 +7,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { AppState } from 'react-native';
 import { getDriverOrders, postDriverOrderAction } from '../api';
 import i18n from '../i18n';
 import { useAuth } from './AuthContext';
@@ -16,8 +17,8 @@ import { describeDriverOrdersEndpoint } from '../config';
 const DriverOrdersContext = createContext(null);
 
 /** Poll driver-orders while driver app is open (any tab). Jobs tab used to be lazy-unmounted so offers never appeared. */
-/** Slower than 5s to avoid stacking requests with auth + Edge Function limits. */
-const DRIVER_JOBS_POLL_MS = 12000;
+/** Keep at ≥5s to avoid stacking requests with auth + Edge Function limits; slower polls made the ride modal feel “broken”. */
+const DRIVER_JOBS_POLL_MS = 5000;
 
 function augmentDriverJobsError(raw) {
   const m = String(raw || '').trim();
@@ -27,6 +28,9 @@ function augmentDriverJobsError(raw) {
   }
   if (/429|rate limit|too many requests/i.test(base)) {
     return `${base}\n\n${i18n.t('driver_jobs_rate_limit_hint')}`;
+  }
+  if (/502|503|504|bad gateway|gateway error/i.test(base)) {
+    return `${base}\n\n${i18n.t('driver_jobs_gateway_hint')}`;
   }
   return base;
 }
@@ -83,6 +87,13 @@ export function DriverOrdersProvider({ children }) {
       load();
     }, DRIVER_JOBS_POLL_MS);
     return () => clearInterval(poll);
+  }, [load]);
+
+  useEffect(() => {
+    const sub = AppState.addEventListener('change', (state) => {
+      if (state === 'active') load();
+    });
+    return () => sub.remove();
   }, [load]);
 
   const refresh = useCallback(async () => {

@@ -7,7 +7,6 @@ import { LocaleTabContext } from '../context/LocaleTabContext';
 import { useTheme } from '../context/ThemeContext';
 import { DriverOrdersProvider } from '../context/DriverOrdersContext';
 import DriverIncomingOfferModal from '../components/DriverIncomingOfferModal';
-import DriverShellAlerts from '../components/DriverShellAlerts';
 import DriverDashboardScreen from '../screens/DriverDashboardScreen';
 import DriverHomeScreen from '../screens/DriverHomeScreen';
 import AccountScreen from '../screens/AccountScreen';
@@ -42,7 +41,6 @@ function DriverTabs() {
     <LocaleTabContext.Provider value={bump}>
       <DriverOrdersProvider>
         <View style={{ flex: 1 }}>
-          <DriverShellAlerts />
           <DriverIncomingOfferModal />
           <Tab.Navigator style={{ flex: 1 }} screenOptions={screenOptions}>
         <Tab.Screen

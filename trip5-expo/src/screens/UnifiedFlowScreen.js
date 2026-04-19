@@ -26,13 +26,15 @@ import { useTheme } from '../context/ThemeContext';
 import EmbeddedTripMap from '../components/EmbeddedTripMap';
 import { useAuth } from '../context/AuthContext';
 import { TERMS_AND_PRIVACY_TEXT } from '../legal/termsPrivacyText';
-import { formatTripRefLine } from '../utils/tripReference';
 
-/** iOS wheel picker: dark sheets need explicit light text or wheels stay illegible. */
-function iosSpinnerPickerProps(isDark) {
+/** iOS spinner wheels: need explicit colors in both themes (light wheels were invisible on white sheets). */
+function iosSpinnerPickerProps(isDark, colors) {
   if (Platform.OS !== 'ios') return {};
-  if (!isDark) return {};
-  return { textColor: '#FFFFFF', themeVariant: 'dark' };
+  if (isDark) {
+    return { textColor: '#FFFFFF', themeVariant: 'dark' };
+  }
+  const tc = colors?.text || '#111111';
+  return { textColor: tc, themeVariant: 'light' };
 }
 
 const HOLD_DURATION = 140;
@@ -96,13 +98,7 @@ export default function UnifiedFlowScreen({
   orderDate,
   isSubmitting,
   submitError,
-  orderSent,
-  orderDispatch,
-  submittedTripReference,
   submit,
-  resetOrder,
-  onExitAfterSuccess,
-  exitAfterSuccessLabel,
   initialOpenAirportModal = false,
   initialStopsMode = 'pickup',
   mapFloatingSearchTop,
@@ -111,7 +107,7 @@ export default function UnifiedFlowScreen({
 }) {
   const { colors, isDark } = useTheme();
   const styles = useMemo(() => createUnifiedFlowStyles(colors), [colors]);
-  const iosPickerDark = iosSpinnerPickerProps(isDark);
+  const iosPickerDark = iosSpinnerPickerProps(isDark, colors);
   const isArabic = i18n.locale === 'ar';
   const { profile } = useAuth();
   const topInsetScroll = contentTopInset ?? 0;
@@ -461,69 +457,6 @@ export default function UnifiedFlowScreen({
   };
   const routeText = getRouteText();
 
-  const dispatchFailureHint = () => {
-    if (!orderDispatch || orderDispatch.offerCreated) return '';
-    const r = orderDispatch.reason;
-    const keyByReason = {
-      no_eligible_drivers: 'order_dispatch_reason_no_eligible',
-      all_drivers_already_offered: 'order_dispatch_reason_all_offered',
-      offer_insert_failed: 'order_dispatch_reason_offer_failed',
-      assign_exception: 'order_dispatch_reason_error',
-      drivers_query_failed: 'order_dispatch_reason_error',
-      past_offers_query_failed: 'order_dispatch_reason_error',
-      order_not_found: 'order_dispatch_reason_error',
-      order_not_dispatchable: 'order_dispatch_reason_error',
-    };
-    const key = keyByReason[r] || 'order_dispatch_no_offer';
-    return i18n.t(key);
-  };
-
-  if (orderSent) {
-    const dispatchHint = orderDispatch
-      ? orderDispatch.offerCreated
-        ? i18n.t('order_dispatch_ok_sub')
-        : dispatchFailureHint()
-      : i18n.t('order_sent_desc');
-    return (
-      <View style={[styles.container, styles.containerSuccess, contentTopInset != null && { paddingTop: contentTopInset }]}>
-        <View style={styles.card}>
-          <Text style={styles.successIcon}>✓</Text>
-          <Text style={styles.successTitle}>{i18n.t('order_sent')}</Text>
-          <Text
-            style={[
-              styles.successDesc,
-              orderDispatch && !orderDispatch.offerCreated ? styles.successDescWarn : null,
-            ]}
-          >
-            {dispatchHint}
-          </Text>
-          {submittedTripReference ? (
-            <>
-              <Text style={styles.successTripRef} selectable>
-                {formatTripRefLine(i18n, submittedTripReference)}
-              </Text>
-              <Text style={styles.successRefHint}>{i18n.t('booking_reference_support_hint')}</Text>
-            </>
-          ) : null}
-          <TouchableOpacity
-            style={styles.primaryButton}
-            onPress={() => {
-              if (onExitAfterSuccess) {
-                onExitAfterSuccess();
-              } else {
-                resetOrder();
-              }
-            }}
-          >
-            <Text style={styles.primaryButtonText}>
-              {exitAfterSuccessLabel || i18n.t('new_order')}
-            </Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    );
-  }
-
   const renderStepContent = () => {
     switch (currentStep) {
       case 2: {
@@ -832,7 +765,7 @@ export default function UnifiedFlowScreen({
       style={[
         styles.container,
         currentStep === 2 && styles.containerMapStep,
-        currentStep >= 3 && !orderSent && styles.containerUnderChrome,
+        currentStep >= 3 && styles.containerUnderChrome,
       ]}
     >
       <Modal visible={isSubmitting} transparent animationType="fade">
@@ -860,7 +793,7 @@ export default function UnifiedFlowScreen({
               transform: [{ scale: contentScale }],
             },
             currentStep === 2 && styles.cardMapStep,
-            currentStep >= 3 && !orderSent && styles.cardBookingScroll,
+            currentStep >= 3 && styles.cardBookingScroll,
           ]}
         >
           {renderStepContent()}

@@ -8,12 +8,17 @@ import { ios } from '../theme';
 import { useTheme } from '../context/ThemeContext';
 import { useOrder } from '../context/OrderContext';
 import StepProgress from '../components/StepProgress';
+import OrderSuccessView from '../components/OrderSuccessView';
 import UnifiedFlowScreen from './UnifiedFlowScreen';
 
 export default function BookingFlowScreen({ navigation }) {
   const route = useRoute();
   const appliedHomeParams = useRef(false);
   const appliedInitialDestination = useRef(false);
+  /** Once we saw valid entry params, never auto-pop when `route.params` is later cleared/merged by React Navigation. */
+  const hadValidEntryParamsRef = useRef(false);
+  /** Submit modal / auth refresh can blur this screen briefly; resetting here wiped state before `orderSent` was set. */
+  const skipResetOnBlurRef = useRef(false);
   const {
     order,
     updateOrder,
@@ -51,9 +56,15 @@ export default function BookingFlowScreen({ navigation }) {
 
   useEffect(() => {
     const p = route.params;
-    if (p?.presetRoute != null || p?.openAirportModal === true) return;
+    if (p?.presetRoute != null || p?.openAirportModal === true) {
+      hadValidEntryParamsRef.current = true;
+      return;
+    }
+    if (hadValidEntryParamsRef.current) return;
+    if (orderSent || isSubmitting) return;
+    if (currentStep >= 3) return;
     navigation.goBack();
-  }, [navigation, route.params]);
+  }, [navigation, route.params, orderSent, isSubmitting, currentStep]);
 
   useEffect(() => {
     if (appliedHomeParams.current) return;
@@ -86,9 +97,16 @@ export default function BookingFlowScreen({ navigation }) {
     appliedInitialDestination.current = true;
   }, [currentStep, route.params?.initialDestination, updateOrder]);
 
+  useEffect(() => {
+    skipResetOnBlurRef.current = isSubmitting || orderSent;
+  }, [isSubmitting, orderSent]);
+
   useFocusEffect(
     useCallback(() => {
       return () => {
+        if (skipResetOnBlurRef.current) {
+          return;
+        }
         appliedHomeParams.current = false;
         appliedInitialDestination.current = false;
         resetOrder();
@@ -156,7 +174,20 @@ export default function BookingFlowScreen({ navigation }) {
 
   const mapFloatingSearchTop = insets.top + stepProgressHeight + 10;
 
-  const flow = (
+  const submitWithBlurGuard = useCallback(async () => {
+    skipResetOnBlurRef.current = true;
+    await submit();
+  }, [submit]);
+
+  const flow = orderSent ? (
+    <OrderSuccessView
+      orderDispatch={orderDispatch}
+      submittedTripReference={submittedTripReference}
+      onExit={() => navigation.goBack()}
+      exitLabel={i18n.t('dashboard_back_home')}
+      contentTopInset={contentTopInset}
+    />
+  ) : (
     <UnifiedFlowScreen
       order={order}
       updateOrder={updateOrder}
@@ -173,13 +204,7 @@ export default function BookingFlowScreen({ navigation }) {
       orderDate={orderDate}
       isSubmitting={isSubmitting}
       submitError={submitError}
-      orderSent={orderSent}
-      orderDispatch={orderDispatch}
-      submittedTripReference={submittedTripReference}
-      submit={submit}
-      resetOrder={resetOrder}
-      onExitAfterSuccess={() => navigation.goBack()}
-      exitAfterSuccessLabel={i18n.t('dashboard_back_home')}
+      submit={submitWithBlurGuard}
       initialOpenAirportModal={initialOpenAirportModal}
       initialStopsMode={route.params?.initialDestination ? 'destination' : 'pickup'}
       mapFloatingSearchTop={mapStep ? mapFloatingSearchTop : undefined}

@@ -11,15 +11,25 @@ function useEdgeFunctions() {
 
 export { isSupabaseUrlWithoutAnonKey };
 
-function serviceHeaders(accessToken, withJsonBody) {
+/** `useApiKey: false` when calling the HTTP mirror (`/api/driver-orders`) while Edge Functions stay configured. */
+function serviceHeaders(accessToken, withJsonBody, headerOpts = {}) {
+  const useApiKey = headerOpts.useApiKey !== false;
   const h = {
     ...(withJsonBody ? { 'Content-Type': 'application/json' } : {}),
     ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
   };
-  if (useEdgeFunctions()) {
+  if (useEdgeFunctions() && useApiKey) {
     h.apikey = Config.supabaseAnonKey;
   }
   return h;
+}
+
+function driverOrdersHttpMirrorUrl() {
+  return `${Config.apiBaseURL}/api/driver-orders`;
+}
+
+function ordersHttpMirrorUrl() {
+  return `${Config.apiBaseURL}/api/orders`;
 }
 
 function ordersUrl() {
@@ -67,14 +77,40 @@ async function resolveAccessToken(preferred) {
 }
 
 export async function submitOrder(order, accessToken) {
-  const url = ordersUrl();
+  const primaryUrl = ordersUrl();
+  const httpMirror = ordersHttpMirrorUrl();
+  const bodyStr = JSON.stringify(order);
+
   try {
-    const response = await fetch(url, {
+    const response = await fetch(primaryUrl, {
       method: 'POST',
       headers: serviceHeaders(accessToken, true),
-      body: JSON.stringify(order),
+      body: bodyStr,
     });
-    const data = await response.json().catch(() => ({}));
+    let data = await response.json().catch(() => ({}));
+
+    if (
+      !response.ok &&
+      useEdgeFunctions() &&
+      [502, 503, 504].includes(response.status) &&
+      httpMirror &&
+      primaryUrl !== httpMirror
+    ) {
+      try {
+        const r2 = await fetch(httpMirror, {
+          method: 'POST',
+          headers: serviceHeaders(accessToken, true, { useApiKey: false }),
+          body: bodyStr,
+        });
+        const d2 = await r2.json().catch(() => ({}));
+        if (r2.ok) {
+          return d2;
+        }
+      } catch {
+        /* fall through to primary error */
+      }
+    }
+
     if (!response.ok) {
       const parts = [data.error, data.message, data.detail].filter(Boolean);
       const fromBody = parts.length ? parts.join(' — ') : '';
@@ -120,7 +156,8 @@ export async function getDriverOrders(accessTokenHint) {
       'Missing EXPO_PUBLIC_SUPABASE_ANON_KEY. Add it to trip5-expo/.env (same project as EXPO_PUBLIC_SUPABASE_URL) so driver-orders can reach Edge Functions.'
     );
   }
-  const url = driverOrdersUrl();
+  const primaryUrl = driverOrdersUrl();
+  const httpMirror = driverOrdersHttpMirrorUrl();
 
   const fetchOnce = async (token) => {
     if (!token) {
@@ -130,7 +167,7 @@ export async function getDriverOrders(accessTokenHint) {
     }
     let response;
     try {
-      response = await fetch(url, {
+      response = await fetch(primaryUrl, {
         headers: serviceHeaders(token, false),
       });
     } catch (err) {
@@ -146,7 +183,28 @@ export async function getDriverOrders(accessTokenHint) {
       }
       throw err;
     }
-    const data = await response.json().catch(() => ({}));
+    let data = await response.json().catch(() => ({}));
+
+    if (
+      !response.ok &&
+      useEdgeFunctions() &&
+      [502, 503, 504].includes(response.status) &&
+      httpMirror &&
+      primaryUrl !== httpMirror
+    ) {
+      try {
+        const r2 = await fetch(httpMirror, {
+          headers: serviceHeaders(token, false, { useApiKey: false }),
+        });
+        const d2 = await r2.json().catch(() => ({}));
+        if (r2.ok) {
+          return d2;
+        }
+      } catch {
+        /* fall through to primary error */
+      }
+    }
+
     if (!response.ok) {
       const msg =
         response.status === 401
@@ -178,7 +236,9 @@ export async function getDriverOrders(accessTokenHint) {
 }
 
 export async function postDriverOrderAction(accessTokenHint, body) {
-  const url = driverOrdersUrl();
+  const primaryUrl = driverOrdersUrl();
+  const httpMirror = driverOrdersHttpMirrorUrl();
+  const bodyStr = JSON.stringify(body);
 
   const fetchOnce = async (token) => {
     if (!token) {
@@ -186,12 +246,35 @@ export async function postDriverOrderAction(accessTokenHint, body) {
       err._httpStatus = 401;
       throw err;
     }
-    const response = await fetch(url, {
+    const response = await fetch(primaryUrl, {
       method: 'POST',
       headers: serviceHeaders(token, true),
-      body: JSON.stringify(body),
+      body: bodyStr,
     });
-    const data = await response.json().catch(() => ({}));
+    let data = await response.json().catch(() => ({}));
+
+    if (
+      !response.ok &&
+      useEdgeFunctions() &&
+      [502, 503, 504].includes(response.status) &&
+      httpMirror &&
+      primaryUrl !== httpMirror
+    ) {
+      try {
+        const r2 = await fetch(httpMirror, {
+          method: 'POST',
+          headers: serviceHeaders(token, true, { useApiKey: false }),
+          body: bodyStr,
+        });
+        const d2 = await r2.json().catch(() => ({}));
+        if (r2.ok) {
+          return d2;
+        }
+      } catch {
+        /* fall through */
+      }
+    }
+
     if (!response.ok) {
       const msg = data.error || data.message || `Server error (${response.status})`;
       const err = new Error(msg);

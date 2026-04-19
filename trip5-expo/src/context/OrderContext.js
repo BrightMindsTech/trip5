@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useCallback, useEffect } fr
 import { submitOrder } from '../api';
 import { useAuth } from './AuthContext';
 import { supabase } from '../lib/supabase';
+import i18n from '../i18n';
 
 const OrderContext = createContext();
 
@@ -145,8 +146,14 @@ export function OrderProvider({ children }) {
   };
 
   const submit = useCallback(async () => {
-    if (!order.pickup) return;
-    if (!order.skipDestination && (!order.destination || order.destination.latitude == null)) return;
+    if (!order.pickup) {
+      setSubmitError(i18n.t('error_select_location'));
+      return;
+    }
+    if (!order.skipDestination && (!order.destination || order.destination.latitude == null)) {
+      setSubmitError(i18n.t('error_select_location'));
+      return;
+    }
     if (!accessToken) {
       setSubmitError('Not signed in.');
       return;
@@ -154,10 +161,12 @@ export function OrderProvider({ children }) {
     setIsSubmitting(true);
     setSubmitError(null);
     try {
-      const { data: refData } = await supabase.auth.refreshSession();
-      let token = refData?.session?.access_token ?? null;
+      /** Avoid refreshSession() here — it hits Supabase /token and can 429; context token + getSession is enough. */
+      let token = accessToken || null;
       if (!token) {
-        const { data: { session } } = await supabase.auth.getSession();
+        const {
+          data: { session },
+        } = await supabase.auth.getSession();
         token = session?.access_token ?? null;
       }
       if (!token) {
